@@ -1,15 +1,57 @@
 import OpenAI from "openai";
 import { z } from "zod";
-import type { ArchiveRecord, StoryDossier } from "@/lib/types";
+import type { ArchiveRecord, ResearchDecisionSet, StoryDossier } from "@/lib/types";
+
+const scoreSchema = z.object({
+  narrativeTension: z.number().min(0).max(100),
+  sourceStrength: z.number().min(0).max(100),
+  originality: z.number().min(0).max(100),
+  humanInterest: z.number().min(0).max(100),
+  historicalConsequence: z.number().min(0).max(100),
+  researchability: z.number().min(0).max(100),
+});
+
+const evidenceSchema = z.object({
+  claim: z.string(),
+  sourceIds: z.array(z.string()),
+  note: z.string(),
+});
 
 const dossierSchema = z.object({
-  stories: z.array(z.object({
-    workingTitle: z.string(), category: z.string(), summary: z.string(), eventDate: z.string().nullable().optional(), location: z.string().nullable().optional(),
-    scores: z.object({ interest: z.number().min(0).max(100), sources: z.number().min(0).max(100), competition: z.number().min(0).max(100), confidence: z.number().min(0).max(100) }),
-    chronology: z.array(z.object({ date: z.string(), event: z.string() })),
-    keyFacts: z.array(z.string()), conflicts: z.array(z.string()), titles: z.array(z.string()),
-    outline: z.array(z.object({ heading: z.string(), notes: z.string() })), sourceIds: z.array(z.string())
-  })).max(5)
+  category: z.string(),
+  summary: z.string(),
+  eventDate: z.string().nullable(),
+  location: z.string().nullable(),
+  chronology: z.array(z.object({ date: z.string(), event: z.string() })),
+  keyFacts: z.array(z.string()),
+  conflicts: z.array(z.string()),
+  titles: z.array(z.string()),
+  outline: z.array(z.object({ heading: z.string(), notes: z.string() })),
+});
+
+const decisionSchema = z.object({
+  rejected: z.array(z.object({ title: z.string(), reason: z.string(), sourceIds: z.array(z.string()) })),
+  merged: z.array(z.object({ title: z.string(), reason: z.string(), sourceIds: z.array(z.string()) })),
+  recommendations: z.array(z.object({
+    clusterLabel: z.string(),
+    mergeKey: z.string(),
+    workingTitle: z.string(),
+    premise: z.string(),
+    narrativeHook: z.string(),
+    whyOverlooked: z.string(),
+    strongestEvidence: z.array(evidenceSchema),
+    originalityAssessment: z.string(),
+    unresolvedRisks: z.array(z.string()),
+    confidence: z.number().min(0).max(100),
+    researchCompleteness: z.number().min(0).max(100),
+    recommendedNextAction: z.string(),
+    scores: scoreSchema,
+    sourceIds: z.array(z.string()),
+    followUpQueries: z.array(z.string()),
+    downgradeReason: z.string().nullable(),
+    shouldCreateDossier: z.boolean(),
+    dossier: dossierSchema.nullable(),
+  })).max(6),
 });
 
 function getOpenAI() {
@@ -17,51 +59,228 @@ function getOpenAI() {
   return new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 }
 
-export async function buildDossiers(records: ArchiveRecord[]): Promise<StoryDossier[]> {
+const recommendationItemSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: [
+    "clusterLabel", "mergeKey", "workingTitle", "premise", "narrativeHook", "whyOverlooked",
+    "strongestEvidence", "originalityAssessment", "unresolvedRisks", "confidence",
+    "researchCompleteness", "recommendedNextAction", "scores", "sourceIds", "followUpQueries",
+    "downgradeReason", "shouldCreateDossier", "dossier"
+  ],
+  properties: {
+    clusterLabel: { type: "string" },
+    mergeKey: { type: "string" },
+    workingTitle: { type: "string" },
+    premise: { type: "string" },
+    narrativeHook: { type: "string" },
+    whyOverlooked: { type: "string" },
+    strongestEvidence: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["claim", "sourceIds", "note"],
+        properties: {
+          claim: { type: "string" },
+          sourceIds: { type: "array", items: { type: "string" } },
+          note: { type: "string" },
+        },
+      },
+    },
+    originalityAssessment: { type: "string" },
+    unresolvedRisks: { type: "array", items: { type: "string" } },
+    confidence: { type: "number" },
+    researchCompleteness: { type: "number" },
+    recommendedNextAction: { type: "string" },
+    scores: {
+      type: "object",
+      additionalProperties: false,
+      required: ["narrativeTension", "sourceStrength", "originality", "humanInterest", "historicalConsequence", "researchability"],
+      properties: {
+        narrativeTension: { type: "number" },
+        sourceStrength: { type: "number" },
+        originality: { type: "number" },
+        humanInterest: { type: "number" },
+        historicalConsequence: { type: "number" },
+        researchability: { type: "number" },
+      },
+    },
+    sourceIds: { type: "array", items: { type: "string" } },
+    followUpQueries: { type: "array", items: { type: "string" } },
+    downgradeReason: { type: ["string", "null"] },
+    shouldCreateDossier: { type: "boolean" },
+    dossier: {
+      anyOf: [
+        { type: "null" },
+        {
+          type: "object",
+          additionalProperties: false,
+          required: ["category", "summary", "eventDate", "location", "chronology", "keyFacts", "conflicts", "titles", "outline"],
+          properties: {
+            category: { type: "string" },
+            summary: { type: "string" },
+            eventDate: { type: ["string", "null"] },
+            location: { type: ["string", "null"] },
+            chronology: { type: "array", items: { type: "object", additionalProperties: false, required: ["date", "event"], properties: { date: { type: "string" }, event: { type: "string" } } } },
+            keyFacts: { type: "array", items: { type: "string" } },
+            conflicts: { type: "array", items: { type: "string" } },
+            titles: { type: "array", items: { type: "string" } },
+            outline: { type: "array", items: { type: "object", additionalProperties: false, required: ["heading", "notes"], properties: { heading: { type: "string" }, notes: { type: "string" } } } },
+          },
+        },
+      ],
+    },
+  },
+};
+
+export async function buildResearchDecisions(records: ArchiveRecord[]): Promise<ResearchDecisionSet> {
   const client = getOpenAI();
-  if (!client) return demoDossiers(records);
-  const compact = records.slice(0, 60).map(({ id, title, url, date, location, description, source }) => ({ id, title, url, date, location, description: description?.slice(0, 1500), source }));
+  if (!client) return demoDecisions(records);
+
+  const compact = records.slice(0, 90).map(({ id, title, url, date, location, description, source }) => ({
+    id,
+    title,
+    url,
+    date,
+    location,
+    source,
+    description: description?.slice(0, 1600),
+  }));
+
   const response = await client.responses.create({
     model: process.env.RESEARCH_MODEL ?? "gpt-5-mini",
     input: [
-      { role: "system", content: "You are a historical research editor. Identify up to 3 coherent, verifiable story candidates from archive metadata. Never invent facts. Treat newspaper allegations as allegations. Use only supplied records. Score competition inversely: 100 means unusually low direct competition. Return JSON only." },
-      { role: "user", content: JSON.stringify(compact) }
+      {
+        role: "system",
+        content: [
+          "You are StoryDid's autonomous historical research editor.",
+          "Your job is to transform raw archive metadata into a tiny set of researched editorial recommendations.",
+          "Cluster records that describe the same underlying event, person, dispute, trial, disaster, fraud, mystery, or controversy.",
+          "Reject duplicates, weak records, ordinary institutional proceedings, routine church/business minutes, and candidates with low narrative tension.",
+          "Rank remaining candidates by narrative tension, source strength, originality, human interest, historical consequence, and researchability.",
+          "Decide what evidence is missing and propose follow-up searches.",
+          "Downgrade investigations when the evidence remains thin.",
+          "Only recommend stories that could plausibly become a compelling YouTube/Facebook historical narrative.",
+          "Every evidence claim must cite supplied source IDs. Never invent facts. Treat newspaper allegations as allegations.",
+          "Create a finished dossier only when confidence and research completeness are both strong."
+        ].join(" ")
+      },
+      { role: "user", content: JSON.stringify(compact) },
     ],
-    text: { format: { type: "json_schema", name: "story_dossiers", strict: true, schema: {
-      type: "object", additionalProperties: false, required: ["stories"], properties: { stories: { type: "array", maxItems: 5, items: {
-        type: "object", additionalProperties: false,
-        required: ["workingTitle","category","summary","eventDate","location","scores","chronology","keyFacts","conflicts","titles","outline","sourceIds"],
-        properties: {
-          workingTitle:{type:"string"}, category:{type:"string"}, summary:{type:"string"}, eventDate:{type:["string","null"]}, location:{type:["string","null"]},
-          scores:{type:"object",additionalProperties:false,required:["interest","sources","competition","confidence"],properties:{interest:{type:"number"},sources:{type:"number"},competition:{type:"number"},confidence:{type:"number"}}},
-          chronology:{type:"array",items:{type:"object",additionalProperties:false,required:["date","event"],properties:{date:{type:"string"},event:{type:"string"}}}},
-          keyFacts:{type:"array",items:{type:"string"}}, conflicts:{type:"array",items:{type:"string"}}, titles:{type:"array",items:{type:"string"}},
-          outline:{type:"array",items:{type:"object",additionalProperties:false,required:["heading","notes"],properties:{heading:{type:"string"},notes:{type:"string"}}}}, sourceIds:{type:"array",items:{type:"string"}}
-        }
-      } } }
-    } } }
+    text: {
+      format: {
+        type: "json_schema",
+        name: "research_decisions",
+        strict: true,
+        schema: {
+          type: "object",
+          additionalProperties: false,
+          required: ["rejected", "merged", "recommendations"],
+          properties: {
+            rejected: {
+              type: "array",
+              items: {
+                type: "object",
+                additionalProperties: false,
+                required: ["title", "reason", "sourceIds"],
+                properties: {
+                  title: { type: "string" },
+                  reason: { type: "string" },
+                  sourceIds: { type: "array", items: { type: "string" } },
+                },
+              },
+            },
+            merged: {
+              type: "array",
+              items: {
+                type: "object",
+                additionalProperties: false,
+                required: ["title", "reason", "sourceIds"],
+                properties: {
+                  title: { type: "string" },
+                  reason: { type: "string" },
+                  sourceIds: { type: "array", items: { type: "string" } },
+                },
+              },
+            },
+            recommendations: { type: "array", maxItems: 6, items: recommendationItemSchema },
+          },
+        },
+      },
+    },
   });
-  const parsed = dossierSchema.parse(JSON.parse(response.output_text));
-  return parsed.stories.map(({ eventDate, location, ...story }) => ({
-    ...story,
-    ...(eventDate ? { eventDate } : {}),
-    ...(location ? { location } : {}),
-  }));
+
+  const parsed = decisionSchema.parse(JSON.parse(response.output_text));
+  return {
+    ...parsed,
+    recommendations: parsed.recommendations.map(({ downgradeReason, dossier, ...recommendation }) => ({
+      ...recommendation,
+      ...(downgradeReason ? { downgradeReason } : {}),
+      ...(dossier ? {
+        dossier: {
+          category: dossier.category,
+          summary: dossier.summary,
+          chronology: dossier.chronology,
+          keyFacts: dossier.keyFacts,
+          conflicts: dossier.conflicts,
+          titles: dossier.titles,
+          outline: dossier.outline,
+          ...(dossier.eventDate ? { eventDate: dossier.eventDate } : {}),
+          ...(dossier.location ? { location: dossier.location } : {}),
+        },
+      } : {}),
+    })),
+  };
 }
 
-function demoDossiers(records: ArchiveRecord[]): StoryDossier[] {
+export async function buildDossiers(records: ArchiveRecord[]): Promise<StoryDossier[]> {
+  const decisions = await buildResearchDecisions(records);
+  return decisions.recommendations
+    .filter((recommendation) => recommendation.shouldCreateDossier && recommendation.dossier)
+    .map((recommendation) => ({
+      workingTitle: recommendation.workingTitle,
+      category: recommendation.dossier?.category ?? "Historical research",
+      summary: recommendation.dossier?.summary ?? recommendation.premise,
+      eventDate: recommendation.dossier?.eventDate,
+      location: recommendation.dossier?.location,
+      scores: {
+        interest: recommendation.scores.humanInterest,
+        sources: recommendation.scores.sourceStrength,
+        competition: recommendation.scores.originality,
+        confidence: recommendation.confidence,
+      },
+      chronology: recommendation.dossier?.chronology ?? [],
+      keyFacts: recommendation.dossier?.keyFacts ?? recommendation.strongestEvidence.map((evidence) => evidence.claim),
+      conflicts: recommendation.dossier?.conflicts ?? recommendation.unresolvedRisks,
+      titles: recommendation.dossier?.titles ?? [recommendation.workingTitle],
+      outline: recommendation.dossier?.outline ?? [],
+      sourceIds: recommendation.sourceIds,
+    }));
+}
+
+function demoDecisions(records: ArchiveRecord[]): ResearchDecisionSet {
   const sample = records.slice(0, 3);
-  return [{
-    workingTitle: sample[0]?.title ?? "The inheritance dispute that divided a town",
-    category: "Historical disputes",
-    summary: "Demo dossier generated because OPENAI_API_KEY is not configured. Archive records were retrieved successfully and are ready for AI analysis.",
-    eventDate: sample[0]?.date,
-    location: sample[0]?.location,
-    scores: { interest: 72, sources: Math.min(95, 35 + sample.length * 15), competition: 76, confidence: 45 },
-    chronology: [{ date: sample[0]?.date ?? "Unknown", event: "Primary archive record located; detailed extraction pending." }],
-    keyFacts: sample.map(x => x.title), conflicts: ["Automated verification requires an OpenAI API key."],
-    titles: ["A Forgotten Case Hidden in the Archives", "The Dispute the Newspapers Could Not Ignore"],
-    outline: [{ heading: "Discovery", notes: "Introduce the archival record and establish the setting." }, { heading: "Evidence", notes: "Compare independent reports and official records." }],
-    sourceIds: sample.map(x => x.id)
-  }];
+  return {
+    rejected: [],
+    merged: [],
+    recommendations: [{
+      clusterLabel: "Demo archive lead",
+      mergeKey: "demo-archive-lead",
+      workingTitle: sample[0]?.title ?? "The inheritance dispute that divided a town",
+      premise: "Demo recommendation generated because OPENAI_API_KEY is not configured.",
+      narrativeHook: "A promising archival lead is ready for deeper source-backed investigation.",
+      whyOverlooked: "The story is buried in metadata-level archive records and has not yet been developed for a popular audience.",
+      strongestEvidence: sample.map((record) => ({ claim: record.title, sourceIds: [record.id], note: record.description ?? "Archive metadata located." })),
+      originalityAssessment: "Likely under-covered until source clustering and title searches are completed.",
+      unresolvedRisks: ["Automated verification requires an OpenAI API key."],
+      confidence: 45,
+      researchCompleteness: 35,
+      recommendedNextAction: "Investigate further",
+      scores: { narrativeTension: 65, sourceStrength: Math.min(95, 35 + sample.length * 15), originality: 76, humanInterest: 72, historicalConsequence: 50, researchability: 58 },
+      sourceIds: sample.map((record) => record.id),
+      followUpQueries: sample[0] ? [sample[0].title] : [],
+      shouldCreateDossier: false,
+    }],
+  };
 }

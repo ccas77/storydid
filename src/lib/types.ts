@@ -23,3 +23,55 @@ export type StoryDossier = {
   outline: Array<{ heading: string; notes: string }>;
   sourceIds: string[];
 };
+
+export type EditorialScorecard = {
+  narrativeTension: number;
+  sourceStrength: number;
+  originality: number;
+  humanInterest: number;
+  historicalConsequence: number;
+  researchability: number;
+};
+
+export type EvidenceClaim = {
+  claim: string;
+  sourceIds: string[];
+  note: string;
+};
+
+export type EditorialRecommendation = {
+  clusterLabel: string;
+  mergeKey: string;
+  workingTitle: string;
+  premise: string;
+  narrativeHook: string;
+  whyOverlooked: string;
+  strongestEvidence: EvidenceClaim[];
+  originalityAssessment: string;
+  unresolvedRisks: string[];
+  confidence: number;
+  researchCompleteness: number;
+  recommendedNextAction: string;
+  scores: EditorialScorecard;
+  sourceIds: string[];
+  followUpQueries: string[];
+  downgradeReason?: string;
+  shouldCreateDossier: boolean;
+  dossier?: {
+    category: string;
+    summary: string;
+    eventDate?: string;
+    location?: string;
+    chronology: Array<{ date: string; event: string }>;
+    keyFacts: string[];
+    conflicts: string[];
+    titles: string[];
+    outline: Array<{ heading: string; notes: string }>;
+  };
+};
+
+export type ResearchDecisionSet = {
+  rejected: Array<{ title: string; reason: string; sourceIds: string[] }>;
+  merged: Array<{ title: string; reason: string; sourceIds: string[] }>;
+  recommendations: EditorialRecommendation[];
+};
