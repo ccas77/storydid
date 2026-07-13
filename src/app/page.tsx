@@ -8,7 +8,7 @@ import { RunButton } from "@/components/run-button";
 export const dynamic = "force-dynamic";
 export default async function Home() {
   const db = getDb();
-  const rows = db ? await db.select().from(stories).orderBy(desc(stories.createdAt)).limit(30) : demoStories;
+  const rows = db ? await db.select().from(stories).orderBy(desc(stories.createdAt)).limit(30).catch(() => demoStories) : demoStories;
   const avg = (key: "interestScore"|"sourceScore"|"competitionScore"|"confidenceScore") => Math.round(rows.reduce((s,r)=>s+(r[key]??0),0)/Math.max(rows.length,1));
   return <main className="shell"><header className="top"><div><div className="brand">StoryDid</div><div className="sub">Historical stories, evidence first.</div></div><RunButton/></header>
     <section className="stats"><div className="stat"><strong>{rows.length}</strong><span>research dossiers</span></div><div className="stat"><strong>{avg("interestScore")}</strong><span>average interest</span></div><div className="stat"><strong>{avg("sourceScore")}</strong><span>source strength</span></div><div className="stat"><strong>{avg("competitionScore")}</strong><span>low-competition score</span></div></section>
