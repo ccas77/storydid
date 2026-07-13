@@ -30,7 +30,7 @@ export async function buildDossiers(records: ArchiveRecord[]): Promise<StoryDoss
     text: { format: { type: "json_schema", name: "story_dossiers", strict: true, schema: {
       type: "object", additionalProperties: false, required: ["stories"], properties: { stories: { type: "array", maxItems: 5, items: {
         type: "object", additionalProperties: false,
-        required: ["workingTitle","category","summary","scores","chronology","keyFacts","conflicts","titles","outline","sourceIds"],
+        required: ["workingTitle","category","summary","eventDate","location","scores","chronology","keyFacts","conflicts","titles","outline","sourceIds"],
         properties: {
           workingTitle:{type:"string"}, category:{type:"string"}, summary:{type:"string"}, eventDate:{type:["string","null"]}, location:{type:["string","null"]},
           scores:{type:"object",additionalProperties:false,required:["interest","sources","competition","confidence"],properties:{interest:{type:"number"},sources:{type:"number"},competition:{type:"number"},confidence:{type:"number"}}},
