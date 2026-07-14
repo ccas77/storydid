@@ -4,6 +4,7 @@ export const storyStatus = pgEnum("story_status", ["candidate", "researching", "
 export const recommendationStatus = pgEnum("recommendation_status", ["recommended", "developing", "angle_requested", "investigate_further", "dismissed", "dossier_ready"]);
 export const clusterStatus = pgEnum("cluster_status", ["candidate", "merged", "rejected", "researching", "recommended", "dossier_ready"]);
 export const researchCycleStatus = pgEnum("research_cycle_status", ["queued", "running", "completed", "failed"]);
+export const candidateStatus = pgEnum("candidate_status", ["active", "duplicate", "rejected", "researching", "recommended", "dossier_ready"]);
 
 export const beats = pgTable("beats", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -105,6 +106,44 @@ export const archiveRecords = pgTable("archive_records", {
   description: text("description"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull()
 });
+
+export const researchStageBudgets = pgTable("research_stage_budgets", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  cycleId: uuid("cycle_id").references(() => researchCycles.id, { onDelete: "cascade" }).notNull(),
+  beatId: uuid("beat_id").references(() => beats.id, { onDelete: "set null" }),
+  stage: text("stage").notNull(),
+  maxRecords: integer("max_records").default(0).notNull(),
+  maxSearches: integer("max_searches").default(0).notNull(),
+  maxModelCalls: integer("max_model_calls").default(0).notNull(),
+  usedRecords: integer("used_records").default(0).notNull(),
+  usedSearches: integer("used_searches").default(0).notNull(),
+  usedModelCalls: integer("used_model_calls").default(0).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull()
+}, (table) => ({
+  cycleStageIdx: uniqueIndex("research_stage_budgets_cycle_stage_idx").on(table.cycleId, table.stage),
+}));
+
+export const candidateFunnelItems = pgTable("candidate_funnel_items", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  cycleId: uuid("cycle_id").references(() => researchCycles.id, { onDelete: "cascade" }).notNull(),
+  beatId: uuid("beat_id").references(() => beats.id, { onDelete: "set null" }),
+  archiveRecordId: uuid("archive_record_id").references(() => archiveRecords.id, { onDelete: "set null" }),
+  externalId: text("external_id").notNull(),
+  title: text("title").notNull(),
+  hypothesis: text("hypothesis").notNull(),
+  normalizedKey: text("normalized_key").notNull(),
+  status: candidateStatus("status").default("active").notNull(),
+  rejectionCode: text("rejection_code"),
+  rejectionReason: text("rejection_reason"),
+  duplicateOf: text("duplicate_of"),
+  scores: jsonb("scores").$type<Record<string, number>>().default({}).notNull(),
+  evidenceSourceIds: jsonb("evidence_source_ids").$type<string[]>().default([]).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull()
+}, (table) => ({
+  cycleExternalIdx: uniqueIndex("candidate_funnel_cycle_external_idx").on(table.cycleId, table.externalId),
+}));
 
 export const storyClusters = pgTable("story_clusters", {
   id: uuid("id").defaultRandom().primaryKey(),
