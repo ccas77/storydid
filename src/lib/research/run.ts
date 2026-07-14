@@ -1,71 +1,109 @@
-import { eq } from "drizzle-orm";
+import { asc, eq, inArray } from "drizzle-orm";
+import type { InferSelectModel } from "drizzle-orm";
 import { getDb } from "@/db";
-import { archiveRecords, editorialRecommendations, researchActivity, researchRuns, sources, stories, storyClusters } from "@/db/schema";
+import { archiveRecords, beats, editorialRecommendations, researchActivity, researchCycles, researchRuns, sources, stories, storyClusters } from "@/db/schema";
 import { searchInternetArchive } from "@/lib/sources/internet-archive";
 import { searchLibraryOfCongress } from "@/lib/sources/loc";
 import type { ArchiveRecord, EditorialRecommendation } from "@/lib/types";
+import { DEFAULT_BEATS, selectNextBeat } from "./beats";
 import { makeDailyQueries } from "./queries";
 import { buildResearchDecisions } from "./openai";
 
 const DOSSIER_CONFIDENCE_THRESHOLD = 70;
 const DOSSIER_COMPLETENESS_THRESHOLD = 72;
 
+type CycleRow = InferSelectModel<typeof researchCycles>;
+
 export async function runResearch() {
   const db = getDb();
-  const queries = makeDailyQueries();
-  const runRows = db ? await db.insert(researchRuns).values({ status: "running", querySet: queries }).returning() : [];
-  const runId = runRows[0]?.id;
+  if (!db) return { ok: false, error: "DATABASE_URL is not configured" };
+
+  await ensureBeats();
+  const cycle = await claimNextCycle();
+  if (!cycle) return { ok: true, status: "idle" };
 
   try {
-    await logActivity(runId, "search", "Scheduled discovery started", `Searching ${queries.length} rotating archive queries.`, { queries });
-    const initialRecords = await discoverRecords(queries);
-    const uniqueInitial = dedupeRecords(initialRecords);
-    await persistArchiveRecords(runId, uniqueInitial);
-    await logActivity(runId, "search", "Archive discovery completed", `Found ${uniqueInitial.length} unique raw archive records.`, { recordsFound: uniqueInitial.length });
-
-    const initialDecisions = await buildResearchDecisions(uniqueInitial);
-    await logDecisionActivity(runId, initialDecisions.rejected, "rejected");
-    await logDecisionActivity(runId, initialDecisions.merged, "merged");
-
-    const followUpQueries = Array.from(new Set(initialDecisions.recommendations
-      .filter((recommendation) => recommendation.confidence >= 45 && recommendation.researchCompleteness < DOSSIER_COMPLETENESS_THRESHOLD)
-      .flatMap((recommendation) => recommendation.followUpQueries)
-      .filter(Boolean)
-      .slice(0, 8)));
-
-    let followUpRecords: ArchiveRecord[] = [];
-    if (followUpQueries.length) {
-      await logActivity(runId, "follow_up", "Agent issued follow-up searches", `The research agent requested ${followUpQueries.length} follow-up searches for promising leads.`, { followUpQueries });
-      followUpRecords = await discoverRecords(followUpQueries, 8);
-      await persistArchiveRecords(runId, followUpRecords);
-      await logActivity(runId, "search", "Follow-up discovery completed", `Follow-up searches found ${dedupeRecords(followUpRecords).length} additional records.`, { recordsFound: dedupeRecords(followUpRecords).length });
-    }
-
-    const allRecords = dedupeRecords([...uniqueInitial, ...followUpRecords]);
-    const finalDecisions = followUpRecords.length ? await buildResearchDecisions(allRecords) : initialDecisions;
-    const saved = db ? await persistRecommendations(runId, finalDecisions.recommendations, allRecords) : [];
-
-    if (db && runId) {
-      await db.update(researchRuns).set({
-        status: "completed",
-        candidatesFound: allRecords.length,
-        storiesSaved: saved.filter((item) => item.storyId).length,
-        completedAt: new Date(),
-      }).where(eq(researchRuns.id, runId));
-    }
-
-    await logActivity(runId, "complete", "Autonomous research cycle completed", `Saved ${saved.length} editorial recommendations and ${saved.filter((item) => item.storyId).length} finished dossiers.`, {
-      recommendationsSaved: saved.length,
-      dossiersSaved: saved.filter((item) => item.storyId).length,
-    });
-
-    return { ok: true, queries, followUpQueries, recordsFound: allRecords.length, recommendations: saved.length, dossiers: saved.filter((item) => item.storyId).length };
+    if (cycle.currentStage === "discovery") return await runDiscoveryStage(cycle);
+    await logActivity(cycle, "stage_waiting", "Cycle stage waiting", `Stage ${cycle.currentStage} is waiting for the next implementation phase.`, {});
+    return { ok: true, cycleId: cycle.id, stage: cycle.currentStage, status: "waiting" };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    await logActivity(runId, "error", "Research cycle failed", message, {});
-    if (db && runId) await db.update(researchRuns).set({ status: "failed", error: message, completedAt: new Date() }).where(eq(researchRuns.id, runId));
+    await db.update(researchCycles).set({ status: "failed", error: message, completedAt: new Date(), updatedAt: new Date() }).where(eq(researchCycles.id, cycle.id));
+    await logActivity(cycle, "error", "Research cycle failed", message, {});
     throw error;
   }
+}
+
+async function ensureBeats() {
+  const db = getDb();
+  if (!db) return;
+  await db.insert(beats).values(DEFAULT_BEATS).onConflictDoNothing({ target: beats.slug });
+}
+
+async function claimNextCycle() {
+  const db = getDb();
+  if (!db) return undefined;
+  const [existing] = await db.select().from(researchCycles)
+    .where(inArray(researchCycles.status, ["queued", "running"]))
+    .orderBy(asc(researchCycles.createdAt))
+    .limit(1);
+  if (existing) {
+    const [claimed] = await db.update(researchCycles).set({ status: "running", lockedAt: new Date(), updatedAt: new Date() }).where(eq(researchCycles.id, existing.id)).returning();
+    return claimed;
+  }
+
+  const activeBeats = await db.select().from(beats).where(eq(beats.active, true));
+  const nextBeat = selectNextBeat(activeBeats.map((beat) => ({
+    ...beat,
+    querySeeds: Array.isArray(beat.querySeeds) ? beat.querySeeds : [],
+  })));
+  if (!nextBeat) return undefined;
+
+  const [cycle] = await db.insert(researchCycles).values({
+    beatId: nextBeat.id,
+    status: "running",
+    currentStage: "discovery",
+    lockedAt: new Date(),
+  }).returning();
+  await db.update(beats).set({ lastScheduledAt: new Date(), updatedAt: new Date() }).where(eq(beats.id, nextBeat.id));
+  return cycle;
+}
+
+async function runDiscoveryStage(cycle: CycleRow) {
+  const db = getDb();
+  if (!db) return { ok: false, error: "DATABASE_URL is not configured" };
+  const beat = await getBeat(cycle.beatId);
+  const queries = makeDailyQueries(new Date(), beat?.querySeeds ?? undefined);
+  const [run] = await db.insert(researchRuns).values({
+    cycleId: cycle.id,
+    beatId: cycle.beatId,
+    status: "discovery_running",
+    querySet: queries,
+  }).returning();
+
+  await logActivity(cycle, "search", "Scheduled beat discovery started", `Searching ${queries.length} archive queries for ${beat?.name ?? "the next beat"}.`, { queries });
+  const records = dedupeRecords(await discoverRecords(queries));
+  await persistArchiveRecords({ cycle, runId: run.id, records });
+  await db.update(researchRuns).set({
+    status: "discovery_completed",
+    candidatesFound: records.length,
+    completedAt: new Date(),
+  }).where(eq(researchRuns.id, run.id));
+  await db.update(researchCycles).set({
+    status: "running",
+    currentStage: "candidate_funnel",
+    stageState: { queries, recordsFound: records.length, runId: run.id },
+    updatedAt: new Date(),
+  }).where(eq(researchCycles.id, cycle.id));
+  await logActivity(cycle, "search", "Beat discovery completed", `Found ${records.length} unique raw archive records.`, { recordsFound: records.length, runId: run.id });
+
+  return { ok: true, cycleId: cycle.id, beat: beat?.slug, stageCompleted: "discovery", nextStage: "candidate_funnel", recordsFound: records.length };
+}
+
+async function getBeat(beatId: string | null) {
+  const db = getDb();
+  if (!db || !beatId) return undefined;
+  return (await db.select().from(beats).where(eq(beats.id, beatId)).limit(1))[0];
 }
 
 async function discoverRecords(queries: string[], limit = 12) {
@@ -80,10 +118,12 @@ function dedupeRecords(records: ArchiveRecord[]) {
   return Array.from(new Map(records.map((record) => [record.url, record])).values());
 }
 
-async function persistArchiveRecords(runId: string | undefined, records: ArchiveRecord[]) {
+async function persistArchiveRecords({ cycle, runId, records }: { cycle: CycleRow; runId: string; records: ArchiveRecord[] }) {
   const db = getDb();
   if (!db || !records.length) return;
   await db.insert(archiveRecords).values(records.map((record) => ({
+    cycleId: cycle.id,
+    beatId: cycle.beatId,
     runId,
     externalId: record.id,
     source: record.source,
@@ -144,9 +184,9 @@ async function persistRecommendations(runId: string | undefined, recommendations
       }).returning();
       storyId = story.id;
       await persistSources(story.id, recommendation.sourceIds, records);
-      await logActivity(runId, "dossier", "Finished dossier generated", `${recommendation.workingTitle} met the confidence and evidence threshold.`, { storyId });
+      await logLegacyActivity(runId, "dossier", "Finished dossier generated", `${recommendation.workingTitle} met the confidence and evidence threshold.`, { storyId });
     } else if (recommendation.downgradeReason) {
-      await logActivity(runId, "downgraded", "Investigation downgraded", `${recommendation.workingTitle}: ${recommendation.downgradeReason}`, { mergeKey: recommendation.mergeKey });
+      await logLegacyActivity(runId, "downgraded", "Investigation downgraded", `${recommendation.workingTitle}: ${recommendation.downgradeReason}`, { mergeKey: recommendation.mergeKey });
     }
 
     const [row] = await db.insert(editorialRecommendations).values({
@@ -170,7 +210,7 @@ async function persistRecommendations(runId: string | undefined, recommendations
       downgradeReason: recommendation.downgradeReason,
     }).returning();
 
-    await logActivity(runId, "recommended", "Editorial recommendation saved", `${recommendation.workingTitle} was ranked for editorial review.`, { recommendationId: row.id, storyId });
+    await logLegacyActivity(runId, "recommended", "Editorial recommendation saved", `${recommendation.workingTitle} was ranked for editorial review.`, { recommendationId: row.id, storyId });
     saved.push({ recommendationId: row.id, ...(storyId ? { storyId } : {}) });
   }
   return saved;
@@ -197,14 +237,17 @@ function editorialScore(recommendation: EditorialRecommendation) {
   return narrativeTension * 1.25 + sourceStrength + originality + humanInterest + historicalConsequence + researchability + recommendation.confidence + recommendation.researchCompleteness;
 }
 
-async function logDecisionActivity(runId: string | undefined, decisions: Array<{ title: string; reason: string; sourceIds: string[] }>, kind: "rejected" | "merged") {
-  for (const decision of decisions.slice(0, 12)) {
-    await logActivity(runId, kind, kind === "rejected" ? "Candidate rejected" : "Records merged", `${decision.title}: ${decision.reason}`, { sourceIds: decision.sourceIds });
-  }
+async function logActivity(cycle: CycleRow, kind: string, title: string, detail: string, metadata: Record<string, unknown>) {
+  const db = getDb();
+  if (!db) return;
+  await db.insert(researchActivity).values({ cycleId: cycle.id, beatId: cycle.beatId, kind, title, detail, metadata }).catch(() => undefined);
 }
 
-async function logActivity(runId: string | undefined, kind: string, title: string, detail: string, metadata: Record<string, unknown>) {
+async function logLegacyActivity(runId: string | undefined, kind: string, title: string, detail: string, metadata: Record<string, unknown>) {
   const db = getDb();
   if (!db) return;
   await db.insert(researchActivity).values({ runId, kind, title, detail, metadata }).catch(() => undefined);
 }
+
+void buildResearchDecisions;
+void persistRecommendations;

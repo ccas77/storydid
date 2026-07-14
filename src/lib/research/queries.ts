@@ -4,7 +4,8 @@ const categories = [
   "medical mystery historical case", "abandoned town disaster"
 ];
 const modifiers = ["forgotten", "extraordinary", "strange", "little-known", "inquest", "testimony", "impostor"];
-export function makeDailyQueries(date = new Date()) {
+export function makeDailyQueries(date = new Date(), seeds = categories) {
   const seed = Math.floor(date.getTime() / 86_400_000);
-  return Array.from({ length: 4 }, (_, i) => `${modifiers[(seed + i) % modifiers.length]} ${categories[(seed * 3 + i) % categories.length]} 1800 1963`);
+  const source = seeds.length ? seeds : categories;
+  return Array.from({ length: 4 }, (_, i) => `${modifiers[(seed + i) % modifiers.length]} ${source[(seed * 3 + i) % source.length]} 1800 1963`);
 }

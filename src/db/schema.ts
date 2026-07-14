@@ -1,11 +1,42 @@
-import { boolean, integer, jsonb, pgEnum, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { boolean, integer, jsonb, pgEnum, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 
 export const storyStatus = pgEnum("story_status", ["candidate", "researching", "ready", "rejected", "published"]);
 export const recommendationStatus = pgEnum("recommendation_status", ["recommended", "developing", "angle_requested", "investigate_further", "dismissed", "dossier_ready"]);
 export const clusterStatus = pgEnum("cluster_status", ["candidate", "merged", "rejected", "researching", "recommended", "dossier_ready"]);
+export const researchCycleStatus = pgEnum("research_cycle_status", ["queued", "running", "completed", "failed"]);
+
+export const beats = pgTable("beats", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  slug: text("slug").notNull(),
+  name: text("name").notNull(),
+  description: text("description").notNull(),
+  querySeeds: jsonb("query_seeds").$type<string[]>().default([]).notNull(),
+  cadenceWeight: integer("cadence_weight").default(1).notNull(),
+  active: boolean("active").default(true).notNull(),
+  lastScheduledAt: timestamp("last_scheduled_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull()
+}, (table) => ({
+  slugIdx: uniqueIndex("beats_slug_idx").on(table.slug),
+}));
+
+export const researchCycles = pgTable("research_cycles", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  beatId: uuid("beat_id").references(() => beats.id, { onDelete: "set null" }),
+  status: researchCycleStatus("status").default("queued").notNull(),
+  currentStage: text("current_stage").default("discovery").notNull(),
+  stageState: jsonb("stage_state").$type<Record<string, unknown>>().default({}).notNull(),
+  scheduledFor: timestamp("scheduled_for", { withTimezone: true }).defaultNow().notNull(),
+  lockedAt: timestamp("locked_at", { withTimezone: true }),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+  error: text("error"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull()
+});
 
 export const stories = pgTable("stories", {
   id: uuid("id").defaultRandom().primaryKey(),
+  beatId: uuid("beat_id").references(() => beats.id, { onDelete: "set null" }),
   workingTitle: text("working_title").notNull(),
   category: text("category").notNull(),
   summary: text("summary").notNull(),
@@ -49,6 +80,8 @@ export const sources = pgTable("sources", {
 
 export const researchRuns = pgTable("research_runs", {
   id: uuid("id").defaultRandom().primaryKey(),
+  cycleId: uuid("cycle_id").references(() => researchCycles.id, { onDelete: "set null" }),
+  beatId: uuid("beat_id").references(() => beats.id, { onDelete: "set null" }),
   status: text("status").notNull(),
   querySet: jsonb("query_set").$type<string[]>().default([]),
   candidatesFound: integer("candidates_found").default(0).notNull(),
@@ -60,6 +93,8 @@ export const researchRuns = pgTable("research_runs", {
 
 export const archiveRecords = pgTable("archive_records", {
   id: uuid("id").defaultRandom().primaryKey(),
+  cycleId: uuid("cycle_id").references(() => researchCycles.id, { onDelete: "set null" }),
+  beatId: uuid("beat_id").references(() => beats.id, { onDelete: "set null" }),
   runId: uuid("run_id").references(() => researchRuns.id, { onDelete: "set null" }),
   externalId: text("external_id").notNull(),
   source: text("source").notNull(),
@@ -73,6 +108,8 @@ export const archiveRecords = pgTable("archive_records", {
 
 export const storyClusters = pgTable("story_clusters", {
   id: uuid("id").defaultRandom().primaryKey(),
+  cycleId: uuid("cycle_id").references(() => researchCycles.id, { onDelete: "set null" }),
+  beatId: uuid("beat_id").references(() => beats.id, { onDelete: "set null" }),
   runId: uuid("run_id").references(() => researchRuns.id, { onDelete: "set null" }),
   status: clusterStatus("status").default("candidate").notNull(),
   label: text("label").notNull(),
@@ -86,6 +123,8 @@ export const storyClusters = pgTable("story_clusters", {
 
 export const editorialRecommendations = pgTable("editorial_recommendations", {
   id: uuid("id").defaultRandom().primaryKey(),
+  cycleId: uuid("cycle_id").references(() => researchCycles.id, { onDelete: "set null" }),
+  beatId: uuid("beat_id").references(() => beats.id, { onDelete: "set null" }),
   runId: uuid("run_id").references(() => researchRuns.id, { onDelete: "set null" }),
   clusterId: uuid("cluster_id").references(() => storyClusters.id, { onDelete: "set null" }),
   storyId: uuid("story_id").references(() => stories.id, { onDelete: "set null" }),
@@ -117,6 +156,8 @@ export const editorialRecommendations = pgTable("editorial_recommendations", {
 
 export const researchActivity = pgTable("research_activity", {
   id: uuid("id").defaultRandom().primaryKey(),
+  cycleId: uuid("cycle_id").references(() => researchCycles.id, { onDelete: "set null" }),
+  beatId: uuid("beat_id").references(() => beats.id, { onDelete: "set null" }),
   runId: uuid("run_id").references(() => researchRuns.id, { onDelete: "set null" }),
   recommendationId: uuid("recommendation_id").references(() => editorialRecommendations.id, { onDelete: "set null" }),
   kind: text("kind").notNull(),

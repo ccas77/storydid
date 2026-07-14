@@ -7,6 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "tsc -p tsconfig.test.json && node --test .test-build/tests/**/*.test.js",
     "db:push": "drizzle-kit push",
     "db:generate": "drizzle-kit generate"
   },
