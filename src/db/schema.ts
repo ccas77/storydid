@@ -5,6 +5,7 @@ export const recommendationStatus = pgEnum("recommendation_status", ["recommende
 export const clusterStatus = pgEnum("cluster_status", ["candidate", "merged", "rejected", "researching", "recommended", "dossier_ready"]);
 export const researchCycleStatus = pgEnum("research_cycle_status", ["queued", "running", "completed", "failed"]);
 export const candidateStatus = pgEnum("candidate_status", ["active", "duplicate", "rejected", "researching", "recommended", "dossier_ready"]);
+export const investigationStatus = pgEnum("investigation_status", ["active", "downgraded", "ready_for_dossier"]);
 
 export const beats = pgTable("beats", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -143,6 +144,26 @@ export const candidateFunnelItems = pgTable("candidate_funnel_items", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull()
 }, (table) => ({
   cycleExternalIdx: uniqueIndex("candidate_funnel_cycle_external_idx").on(table.cycleId, table.externalId),
+}));
+
+export const researchInvestigations = pgTable("research_investigations", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  cycleId: uuid("cycle_id").references(() => researchCycles.id, { onDelete: "cascade" }).notNull(),
+  beatId: uuid("beat_id").references(() => beats.id, { onDelete: "set null" }),
+  candidateId: uuid("candidate_id").references(() => candidateFunnelItems.id, { onDelete: "cascade" }).notNull(),
+  status: investigationStatus("status").default("active").notNull(),
+  workingTitle: text("working_title").notNull(),
+  premise: text("premise").notNull(),
+  researchQuestions: jsonb("research_questions").$type<string[]>().default([]).notNull(),
+  followUpQueries: jsonb("follow_up_queries").$type<string[]>().default([]).notNull(),
+  originalitySignals: jsonb("originality_signals").$type<string[]>().default([]).notNull(),
+  evidenceDepth: integer("evidence_depth").default(0).notNull(),
+  sourceIndependence: jsonb("source_independence").$type<Array<{ group: string; sourceIds: string[] }>>().default([]).notNull(),
+  downgradeReason: text("downgrade_reason"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull()
+}, (table) => ({
+  candidateIdx: uniqueIndex("research_investigations_candidate_idx").on(table.candidateId),
 }));
 
 export const storyClusters = pgTable("story_clusters", {

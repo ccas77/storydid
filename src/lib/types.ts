@@ -75,3 +75,15 @@ export type ResearchDecisionSet = {
   merged: Array<{ title: string; reason: string; sourceIds: string[] }>;
   recommendations: EditorialRecommendation[];
 };
+
+export type InvestigationPlan = {
+  candidateExternalId: string;
+  workingTitle: string;
+  premise: string;
+  researchQuestions: string[];
+  followUpQueries: string[];
+  originalitySignals: string[];
+  evidenceDepth: number;
+  sourceIndependence: Array<{ group: string; sourceIds: string[] }>;
+  downgradeReason?: string;
+};

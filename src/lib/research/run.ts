@@ -1,14 +1,14 @@
-import { asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 import type { InferSelectModel } from "drizzle-orm";
 import { getDb } from "@/db";
-import { archiveRecords, beats, candidateFunnelItems, editorialRecommendations, researchActivity, researchCycles, researchRuns, researchStageBudgets, sources, stories, storyClusters } from "@/db/schema";
+import { archiveRecords, beats, candidateFunnelItems, editorialRecommendations, researchActivity, researchCycles, researchInvestigations, researchRuns, researchStageBudgets, sources, stories, storyClusters } from "@/db/schema";
 import { searchInternetArchive } from "@/lib/sources/internet-archive";
 import { searchLibraryOfCongress } from "@/lib/sources/loc";
 import type { ArchiveRecord, EditorialRecommendation } from "@/lib/types";
 import { DEFAULT_BEATS, selectNextBeat } from "./beats";
 import { buildCandidateFunnel, defaultStageBudget } from "./funnel";
 import { makeDailyQueries } from "./queries";
-import { buildResearchDecisions } from "./openai";
+import { buildInvestigationPlans, buildResearchDecisions } from "./openai";
 
 const DOSSIER_CONFIDENCE_THRESHOLD = 70;
 const DOSSIER_COMPLETENESS_THRESHOLD = 72;
@@ -26,6 +26,7 @@ export async function runResearch() {
   try {
     if (cycle.currentStage === "discovery") return await runDiscoveryStage(cycle);
     if (cycle.currentStage === "candidate_funnel") return await runCandidateFunnelStage(cycle);
+    if (cycle.currentStage === "deep_research") return await runDeepResearchStage(cycle);
     await logActivity(cycle, "stage_waiting", "Cycle stage waiting", `Stage ${cycle.currentStage} is waiting for the next implementation phase.`, {});
     return { ok: true, cycleId: cycle.id, stage: cycle.currentStage, status: "waiting" };
   } catch (error) {
@@ -154,6 +155,56 @@ async function runCandidateFunnelStage(cycle: CycleRow) {
   }).where(eq(researchCycles.id, cycle.id));
   await logActivity(cycle, "candidate_funnel", "Candidate funnel completed", `Kept ${activeCount}, rejected ${rejectedCount}, and merged ${duplicateCount} duplicate records.`, { activeCount, rejectedCount, duplicateCount });
   return { ok: true, cycleId: cycle.id, stageCompleted: "candidate_funnel", nextStage: "deep_research", activeCount, rejectedCount, duplicateCount };
+}
+
+async function runDeepResearchStage(cycle: CycleRow) {
+  const db = getDb();
+  if (!db) return { ok: false, error: "DATABASE_URL is not configured" };
+  const budget = defaultStageBudget("deep_research");
+  const candidates = await db.select().from(candidateFunnelItems)
+    .where(and(eq(candidateFunnelItems.cycleId, cycle.id), eq(candidateFunnelItems.status, "active")))
+    .limit(budget.maxRecords);
+  const active = candidates.filter((candidate) => candidate.status === "active").slice(0, budget.maxRecords);
+  const plans = await buildInvestigationPlans(active.map((candidate) => ({
+    externalId: candidate.externalId,
+    title: candidate.title,
+    hypothesis: candidate.hypothesis,
+    evidenceSourceIds: Array.isArray(candidate.evidenceSourceIds) ? candidate.evidenceSourceIds : [],
+    scores: scoreRecord(candidate.scores),
+  })));
+  const planByExternalId = new Map(plans.map((plan) => [plan.candidateExternalId, plan]));
+
+  for (const candidate of active) {
+    const plan = planByExternalId.get(candidate.externalId);
+    if (!plan) continue;
+    const status = plan.downgradeReason ? "downgraded" : "active";
+    await db.insert(researchInvestigations).values({
+      cycleId: cycle.id,
+      beatId: cycle.beatId,
+      candidateId: candidate.id,
+      status,
+      workingTitle: plan.workingTitle,
+      premise: plan.premise,
+      researchQuestions: plan.researchQuestions,
+      followUpQueries: plan.followUpQueries,
+      originalitySignals: plan.originalitySignals,
+      evidenceDepth: Math.round(plan.evidenceDepth),
+      sourceIndependence: plan.sourceIndependence,
+      downgradeReason: plan.downgradeReason,
+    }).onConflictDoNothing({ target: researchInvestigations.candidateId }).catch(() => undefined);
+    await db.update(candidateFunnelItems).set({ status: status === "downgraded" ? "rejected" : "researching", updatedAt: new Date() }).where(eq(candidateFunnelItems.id, candidate.id));
+  }
+
+  const downgradedCount = plans.filter((plan) => plan.downgradeReason).length;
+  const activeCount = plans.length - downgradedCount;
+  await persistStageBudget(cycle, "deep_research", budget, { usedRecords: active.length, usedModelCalls: plans.length ? 1 : 0 });
+  await db.update(researchCycles).set({
+    currentStage: "dossier_readiness",
+    stageState: { investigationsCreated: plans.length, activeCount, downgradedCount },
+    updatedAt: new Date(),
+  }).where(eq(researchCycles.id, cycle.id));
+  await logActivity(cycle, "deep_research", "Controlled investigations created", `Created ${plans.length} investigation plans; ${downgradedCount} were downgraded for weak evidence.`, { activeCount, downgradedCount });
+  return { ok: true, cycleId: cycle.id, stageCompleted: "deep_research", nextStage: "dossier_readiness", investigations: plans.length, downgradedCount };
 }
 
 async function getBeat(beatId: string | null) {
@@ -318,6 +369,11 @@ async function persistSources(storyId: string, sourceIds: string[], records: Arc
 function editorialScore(recommendation: EditorialRecommendation) {
   const { narrativeTension, sourceStrength, originality, humanInterest, historicalConsequence, researchability } = recommendation.scores;
   return narrativeTension * 1.25 + sourceStrength + originality + humanInterest + historicalConsequence + researchability + recommendation.confidence + recommendation.researchCompleteness;
+}
+
+function scoreRecord(value: unknown): Record<string, number> {
+  if (!value || typeof value !== "object") return {};
+  return Object.fromEntries(Object.entries(value as Record<string, unknown>).flatMap(([key, item]) => typeof item === "number" ? [[key, item]] : []));
 }
 
 async function logActivity(cycle: CycleRow, kind: string, title: string, detail: string, metadata: Record<string, unknown>) {
