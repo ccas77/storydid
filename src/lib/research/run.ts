@@ -9,6 +9,7 @@ import { DEFAULT_BEATS, selectNextBeat } from "./beats";
 import { buildCandidateFunnel, defaultStageBudget } from "./funnel";
 import { makeDailyQueries } from "./queries";
 import { buildInvestigationPlans, buildResearchDecisions } from "./openai";
+import { assessDossierReadiness } from "./readiness";
 
 const DOSSIER_CONFIDENCE_THRESHOLD = 70;
 const DOSSIER_COMPLETENESS_THRESHOLD = 72;
@@ -27,6 +28,7 @@ export async function runResearch() {
     if (cycle.currentStage === "discovery") return await runDiscoveryStage(cycle);
     if (cycle.currentStage === "candidate_funnel") return await runCandidateFunnelStage(cycle);
     if (cycle.currentStage === "deep_research") return await runDeepResearchStage(cycle);
+    if (cycle.currentStage === "dossier_readiness") return await runDossierReadinessStage(cycle);
     await logActivity(cycle, "stage_waiting", "Cycle stage waiting", `Stage ${cycle.currentStage} is waiting for the next implementation phase.`, {});
     return { ok: true, cycleId: cycle.id, stage: cycle.currentStage, status: "waiting" };
   } catch (error) {
@@ -207,6 +209,104 @@ async function runDeepResearchStage(cycle: CycleRow) {
   return { ok: true, cycleId: cycle.id, stageCompleted: "deep_research", nextStage: "dossier_readiness", investigations: plans.length, downgradedCount };
 }
 
+async function runDossierReadinessStage(cycle: CycleRow) {
+  const db = getDb();
+  if (!db) return { ok: false, error: "DATABASE_URL is not configured" };
+  const budget = defaultStageBudget("dossier_readiness");
+  const investigations = await db.select().from(researchInvestigations)
+    .where(and(eq(researchInvestigations.cycleId, cycle.id), eq(researchInvestigations.status, "active")))
+    .limit(budget.maxRecords);
+  let dossiersCreated = 0;
+  let downgraded = 0;
+
+  for (const investigation of investigations) {
+    const readiness = assessDossierReadiness({
+      premise: investigation.premise,
+      workingTitle: investigation.workingTitle,
+      evidenceDepth: investigation.evidenceDepth,
+      sourceIndependence: sourceGroups(investigation.sourceIndependence),
+      researchQuestions: stringArray(investigation.researchQuestions),
+      downgradeReason: investigation.downgradeReason,
+    });
+    await db.update(researchInvestigations).set({
+      readinessScore: readiness.score,
+      claimEvidence: readiness.claimEvidence,
+      status: readiness.ready ? "ready_for_dossier" : "downgraded",
+      downgradeReason: readiness.ready ? investigation.downgradeReason : readiness.risks.join(" "),
+      updatedAt: new Date(),
+    }).where(eq(researchInvestigations.id, investigation.id));
+
+    if (!readiness.ready) {
+      downgraded += 1;
+      await logActivity(cycle, "downgraded", "Investigation failed readiness gate", `${investigation.workingTitle}: ${readiness.risks.join(" ")}`, { investigationId: investigation.id, readinessScore: readiness.score });
+      continue;
+    }
+
+    const sourceIds = Array.from(new Set(readiness.claimEvidence.flatMap((claim) => claim.sourceIds)));
+    const [story] = await db.insert(stories).values({
+      beatId: cycle.beatId,
+      workingTitle: investigation.workingTitle,
+      category: "Autonomous research dossier",
+      summary: investigation.premise,
+      status: "ready",
+      interestScore: 70,
+      sourceScore: Math.min(100, investigation.evidenceDepth),
+      competitionScore: 70,
+      confidenceScore: readiness.score,
+      chronology: [],
+      keyFacts: readiness.claimEvidence.map((claim) => claim.claim),
+      conflicts: readiness.risks,
+      titles: [investigation.workingTitle],
+      outline: [
+        { heading: "Premise", notes: investigation.premise },
+        { heading: "Evidence", notes: "Develop from the cited archive claims and source groups." },
+        { heading: "Risks", notes: readiness.risks.length ? readiness.risks.join(" ") : "No blocking evidence risks at readiness gate." },
+      ],
+      premise: investigation.premise,
+      narrativeHook: stringArray(investigation.researchQuestions)[0] ?? investigation.premise,
+      whyOverlooked: "The story emerged from autonomous archive clustering and evidence-depth checks rather than a manual candidate inbox.",
+      originalityAssessment: stringArray(investigation.originalitySignals).join(" ") || "Originality requires editorial review, but the lead passed automated source-depth checks.",
+      unresolvedRisks: readiness.risks,
+      researchCompleteness: readiness.score,
+      recommendedNextAction: "Develop editorial treatment from the cited claims.",
+      claimCitations: readiness.claimEvidence.map(({ claim, sourceIds }) => ({ claim, sourceIds })),
+    }).returning();
+    await attachSourcesFromArchiveRecords(story.id, sourceIds);
+    const [recommendation] = await db.insert(editorialRecommendations).values({
+      cycleId: cycle.id,
+      beatId: cycle.beatId,
+      storyId: story.id,
+      status: "dossier_ready",
+      workingTitle: investigation.workingTitle,
+      premise: investigation.premise,
+      narrativeHook: stringArray(investigation.researchQuestions)[0] ?? investigation.premise,
+      whyOverlooked: "Autonomous archive research surfaced and validated this story from low-visibility records.",
+      strongestEvidence: readiness.claimEvidence,
+      originalityAssessment: stringArray(investigation.originalitySignals).join(" ") || "Passed automated originality and evidence-depth probes.",
+      unresolvedRisks: readiness.risks,
+      confidence: readiness.score,
+      researchCompleteness: readiness.score,
+      recommendedNextAction: "Develop",
+      scores: { narrativeTension: 70, sourceStrength: investigation.evidenceDepth, originality: 70, humanInterest: 70, historicalConsequence: 60, researchability: readiness.score },
+      sourceIds,
+      followUpQueries: stringArray(investigation.followUpQueries),
+    }).returning();
+    await logActivity(cycle, "dossier", "Finished dossier generated", `${investigation.workingTitle} passed the readiness gate.`, { storyId: story.id, recommendationId: recommendation.id, readinessScore: readiness.score });
+    dossiersCreated += 1;
+  }
+
+  await persistStageBudget(cycle, "dossier_readiness", budget, { usedRecords: investigations.length, usedModelCalls: investigations.length ? 1 : 0 });
+  await db.update(researchCycles).set({
+    status: "completed",
+    currentStage: "completed",
+    stageState: { dossiersCreated, downgraded },
+    completedAt: new Date(),
+    updatedAt: new Date(),
+  }).where(eq(researchCycles.id, cycle.id));
+  await logActivity(cycle, "complete", "Research cycle completed", `Created ${dossiersCreated} dossiers and downgraded ${downgraded} investigations.`, { dossiersCreated, downgraded });
+  return { ok: true, cycleId: cycle.id, stageCompleted: "dossier_readiness", status: "completed", dossiersCreated, downgraded };
+}
+
 async function getBeat(beatId: string | null) {
   const db = getDb();
   if (!db || !beatId) return undefined;
@@ -366,6 +466,23 @@ async function persistSources(storyId: string, sourceIds: string[], records: Arc
   }))).catch(() => undefined);
 }
 
+async function attachSourcesFromArchiveRecords(storyId: string, sourceIds: string[]) {
+  const db = getDb();
+  if (!db || !sourceIds.length) return;
+  const records = await db.select().from(archiveRecords).where(inArray(archiveRecords.externalId, sourceIds));
+  if (!records.length) return;
+  await db.insert(sources).values(records.map((record) => ({
+    storyId,
+    url: record.url,
+    title: record.title,
+    publicationDate: record.recordDate,
+    sourceType: record.source,
+    archiveIdentifier: record.externalId,
+    excerpt: record.description,
+    primarySource: true,
+  }))).catch(() => undefined);
+}
+
 function editorialScore(recommendation: EditorialRecommendation) {
   const { narrativeTension, sourceStrength, originality, humanInterest, historicalConsequence, researchability } = recommendation.scores;
   return narrativeTension * 1.25 + sourceStrength + originality + humanInterest + historicalConsequence + researchability + recommendation.confidence + recommendation.researchCompleteness;
@@ -374,6 +491,20 @@ function editorialScore(recommendation: EditorialRecommendation) {
 function scoreRecord(value: unknown): Record<string, number> {
   if (!value || typeof value !== "object") return {};
   return Object.fromEntries(Object.entries(value as Record<string, unknown>).flatMap(([key, item]) => typeof item === "number" ? [[key, item]] : []));
+}
+
+function stringArray(value: unknown) {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+}
+
+function sourceGroups(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    if (!item || typeof item !== "object") return [];
+    const record = item as Record<string, unknown>;
+    if (typeof record.group !== "string") return [];
+    return [{ group: record.group, sourceIds: stringArray(record.sourceIds) }];
+  });
 }
 
 async function logActivity(cycle: CycleRow, kind: string, title: string, detail: string, metadata: Record<string, unknown>) {

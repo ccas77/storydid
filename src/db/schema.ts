@@ -159,6 +159,8 @@ export const researchInvestigations = pgTable("research_investigations", {
   originalitySignals: jsonb("originality_signals").$type<string[]>().default([]).notNull(),
   evidenceDepth: integer("evidence_depth").default(0).notNull(),
   sourceIndependence: jsonb("source_independence").$type<Array<{ group: string; sourceIds: string[] }>>().default([]).notNull(),
+  claimEvidence: jsonb("claim_evidence").$type<Array<{ claim: string; sourceIds: string[]; note: string }>>().default([]).notNull(),
+  readinessScore: integer("readiness_score").default(0).notNull(),
   downgradeReason: text("downgrade_reason"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull()
