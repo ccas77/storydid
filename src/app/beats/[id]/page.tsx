@@ -2,6 +2,7 @@ import Link from "next/link";
 import { desc, eq } from "drizzle-orm";
 import { notFound } from "next/navigation";
 import { getDb } from "@/db";
+import { ensureResearchSchema } from "@/db/bootstrap";
 import { beats, candidateFunnelItems, editorialRecommendations, researchCycles, researchInvestigations, researchStageBudgets, stories } from "@/db/schema";
 
 export const dynamic = "force-dynamic";
@@ -10,6 +11,7 @@ export default async function BeatPage({ params }: { params: Promise<{ id: strin
   const { id } = await params;
   const db = getDb();
   if (!db) notFound();
+  await ensureResearchSchema();
   const [beat] = await db.select().from(beats).where(eq(beats.slug, id)).limit(1);
   if (!beat) notFound();
 

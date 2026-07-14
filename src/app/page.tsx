@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { desc, eq, ne } from "drizzle-orm";
 import { getDb } from "@/db";
+import { ensureResearchSchema } from "@/db/bootstrap";
 import { beats, editorialRecommendations, researchCycles, researchSettings, stories } from "@/db/schema";
 import { autopilotAction } from "./actions";
 
@@ -8,6 +9,7 @@ export const dynamic = "force-dynamic";
 
 export default async function Home() {
   const db = getDb();
+  if (db) await ensureResearchSchema();
   const beatRows = db ? await db.select().from(beats).where(eq(beats.active, true)).catch(() => []) : [];
   const cycleRows = db ? await db.select().from(researchCycles).orderBy(desc(researchCycles.createdAt)).limit(40).catch(() => []) : [];
   const recommendations = db ? await db.select().from(editorialRecommendations).where(ne(editorialRecommendations.status, "dismissed")).orderBy(desc(editorialRecommendations.createdAt)).limit(10).catch(() => []) : [];

@@ -1,12 +1,14 @@
 import Link from "next/link";
 import { desc } from "drizzle-orm";
 import { getDb } from "@/db";
+import { ensureResearchSchema } from "@/db/bootstrap";
 import { candidateFunnelItems, researchActivity, researchCycles, researchInvestigations, researchRuns, researchStageBudgets } from "@/db/schema";
 
 export const dynamic = "force-dynamic";
 
 export default async function ActivityPage() {
   const db = getDb();
+  if (db) await ensureResearchSchema();
   const events = db ? await db.select().from(researchActivity).orderBy(desc(researchActivity.createdAt)).limit(140).catch(() => []) : [];
   const runs = db ? await db.select().from(researchRuns).orderBy(desc(researchRuns.startedAt)).limit(8).catch(() => []) : [];
   const cycles = db ? await db.select().from(researchCycles).orderBy(desc(researchCycles.createdAt)).limit(12).catch(() => []) : [];

@@ -1,6 +1,7 @@
 import { and, asc, eq, inArray } from "drizzle-orm";
 import type { InferSelectModel } from "drizzle-orm";
 import { getDb } from "@/db";
+import { ensureResearchSchema } from "@/db/bootstrap";
 import { archiveRecords, beats, candidateFunnelItems, editorialRecommendations, researchActivity, researchCycles, researchInvestigations, researchRuns, researchSettings, researchStageBudgets, sources, stories, storyClusters } from "@/db/schema";
 import { searchInternetArchive } from "@/lib/sources/internet-archive";
 import { searchLibraryOfCongress } from "@/lib/sources/loc";
@@ -20,6 +21,7 @@ export async function runResearch() {
   const db = getDb();
   if (!db) return { ok: false, error: "DATABASE_URL is not configured" };
 
+  await ensureResearchSchema();
   await ensureBeats();
   if (!await isAutopilotEnabled()) return { ok: true, status: "paused" };
   const cycle = await claimNextCycle();

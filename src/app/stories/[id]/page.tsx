@@ -2,6 +2,7 @@ import Link from "next/link";
 import { eq } from "drizzle-orm";
 import { notFound } from "next/navigation";
 import { getDb } from "@/db";
+import { ensureResearchSchema } from "@/db/bootstrap";
 import { sources, stories } from "@/db/schema";
 import { demoStories } from "@/lib/demo";
 
@@ -10,6 +11,7 @@ export const dynamic = "force-dynamic";
 export default async function StoryPage({params}:{params:Promise<{id:string}>}) {
   const { id } = await params;
   const db = getDb();
+  if (db) await ensureResearchSchema();
   const story = db ? (await db.select().from(stories).where(eq(stories.id,id)).limit(1).catch(() => []))[0] ?? demoStories.find(s=>s.id===id) : demoStories.find(s=>s.id===id);
   if(!story) notFound();
   const refs = db ? await db.select().from(sources).where(eq(sources.storyId,id)).catch(() => []) : [];
