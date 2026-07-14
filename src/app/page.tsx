@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { desc, eq, ne } from "drizzle-orm";
 import { getDb } from "@/db";
-import { beats, editorialRecommendations, researchCycles, stories } from "@/db/schema";
+import { beats, editorialRecommendations, researchCycles, researchSettings, stories } from "@/db/schema";
+import { autopilotAction } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -11,6 +12,9 @@ export default async function Home() {
   const cycleRows = db ? await db.select().from(researchCycles).orderBy(desc(researchCycles.createdAt)).limit(40).catch(() => []) : [];
   const recommendations = db ? await db.select().from(editorialRecommendations).where(ne(editorialRecommendations.status, "dismissed")).orderBy(desc(editorialRecommendations.createdAt)).limit(10).catch(() => []) : [];
   const dossierRows = db ? await db.select().from(stories).orderBy(desc(stories.createdAt)).limit(10).catch(() => []) : [];
+  const [autopilot] = db ? await db.select().from(researchSettings).where(eq(researchSettings.key, "autopilot")).limit(1).catch(() => []) : [];
+  const autopilotEnabled = autopilot?.value.enabled !== false;
+  const latestCycle = cycleRows[0];
 
   return <main className="shell">
     <header className="top">
@@ -26,6 +30,28 @@ export default async function Home() {
       <Step label="Autonomous filtering" value="candidate funnel" />
       <Step label="Controlled research" value="investigations" />
       <Step label="Editorial approval" value="dossiers and actions" />
+    </section>
+
+    <section className="control-panel" aria-label="Research controls">
+      <div>
+        <p className="eyebrow">Autopilot</p>
+        <h1>{autopilotEnabled ? "Research is running" : "Research is paused"}</h1>
+        <p>The agent advances one persisted stage at a time. Latest stage: <b>{latestCycle?.currentStage.replaceAll("_", " ") ?? "waiting for first cycle"}</b>.</p>
+      </div>
+      <form action={autopilotAction} className="switch-form">
+        <input type="hidden" name="enabled" value={autopilotEnabled ? "false" : "true"} />
+        <button className={`switch ${autopilotEnabled ? "is-on" : ""}`} type="submit" aria-pressed={autopilotEnabled}>
+          <span className="switch-track"><span className="switch-thumb" /></span>
+          <span>{autopilotEnabled ? "On" : "Paused"}</span>
+        </button>
+      </form>
+    </section>
+
+    <section className="status-strip" aria-label="What the agent does">
+      <Status title="Searches" value="Archive sources on a beat schedule" />
+      <Status title="Rejects" value="Duplicates, weak records, routine minutiae" />
+      <Status title="Investigates" value="Evidence gaps and source independence" />
+      <Status title="Stops" value="Downgrades leads that stay thin" />
     </section>
 
     <section className="section-head">
@@ -84,4 +110,8 @@ function Step({ label, value }: { label: string; value: string }) {
 
 function Score({ n, label }: { n: number; label: string }) {
   return <div className="score"><b>{n}</b><span>{label}</span></div>;
+}
+
+function Status({ title, value }: { title: string; value: string }) {
+  return <div className="status-item"><b>{title}</b><span>{value}</span></div>;
 }

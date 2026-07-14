@@ -123,6 +123,105 @@ a {
   letter-spacing: 0;
 }
 
+.control-panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  margin: 0 0 18px;
+  padding: 22px;
+  background: var(--paper);
+  border: 1px solid var(--line-strong);
+}
+
+.control-panel h1 {
+  font-size: 34px;
+}
+
+.control-panel p:last-child {
+  margin-bottom: 0;
+  color: var(--muted);
+}
+
+.switch-form {
+  flex: 0 0 auto;
+}
+
+.switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 132px;
+  min-height: 44px;
+  padding: 7px 12px 7px 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: var(--paper-soft);
+  color: var(--ink);
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.switch-track {
+  position: relative;
+  display: inline-flex;
+  width: 50px;
+  height: 28px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #d8d0c4;
+}
+
+.switch-thumb {
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  background: var(--paper);
+  border: 1px solid var(--line-strong);
+  transition: transform .16s ease;
+}
+
+.switch.is-on .switch-track {
+  background: #dfeee5;
+}
+
+.switch.is-on .switch-thumb {
+  transform: translateX(20px);
+  background: var(--good);
+}
+
+.status-strip {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  margin-bottom: 36px;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
+.status-item {
+  min-height: 86px;
+  padding: 16px;
+  border-right: 1px solid var(--line);
+}
+
+.status-item:last-child {
+  border-right: 0;
+}
+
+.status-item b {
+  display: block;
+  font-family: var(--font-serif);
+  font-size: 20px;
+  margin-bottom: 8px;
+}
+
+.status-item span {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
 .section-head {
   display: flex;
   justify-content: space-between;
@@ -447,6 +546,7 @@ code {
 
 @media (max-width: 900px) {
   .workflow,
+  .status-strip,
   .brief-grid,
   .grid {
     grid-template-columns: 1fr 1fr;
@@ -468,6 +568,7 @@ code {
 
   .top,
   .recommendation-top,
+  .control-panel,
   .section-head {
     flex-direction: column;
     align-items: flex-start;
@@ -485,6 +586,7 @@ code {
   }
 
   .workflow,
+  .status-strip,
   .stats,
   .grid,
   .beat-grid,

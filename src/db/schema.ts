@@ -7,6 +7,12 @@ export const researchCycleStatus = pgEnum("research_cycle_status", ["queued", "r
 export const candidateStatus = pgEnum("candidate_status", ["active", "duplicate", "rejected", "researching", "recommended", "dossier_ready"]);
 export const investigationStatus = pgEnum("investigation_status", ["active", "downgraded", "ready_for_dossier"]);
 
+export const researchSettings = pgTable("research_settings", {
+  key: text("key").primaryKey(),
+  value: jsonb("value").$type<Record<string, unknown>>().default({}).notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull()
+});
+
 export const beats = pgTable("beats", {
   id: uuid("id").defaultRandom().primaryKey(),
   slug: text("slug").notNull(),

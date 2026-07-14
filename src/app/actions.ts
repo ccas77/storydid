@@ -3,7 +3,31 @@
 import { revalidatePath } from "next/cache";
 import { eq, inArray } from "drizzle-orm";
 import { getDb } from "@/db";
-import { archiveRecords, editorialRecommendations, researchActivity, sources, stories } from "@/db/schema";
+import { archiveRecords, editorialRecommendations, researchActivity, researchSettings, sources, stories } from "@/db/schema";
+
+export async function autopilotAction(formData: FormData) {
+  const enabled = String(formData.get("enabled") ?? "") === "true";
+  const db = getDb();
+  if (!db) return;
+
+  await db.insert(researchSettings).values({
+    key: "autopilot",
+    value: { enabled },
+    updatedAt: new Date(),
+  }).onConflictDoUpdate({
+    target: researchSettings.key,
+    set: { value: { enabled }, updatedAt: new Date() },
+  });
+  await db.insert(researchActivity).values({
+    kind: "control",
+    title: enabled ? "Autopilot resumed" : "Autopilot paused",
+    detail: enabled ? "Scheduled research cycles can advance again." : "Scheduled research cycles will not start while autopilot is paused.",
+    metadata: { enabled },
+  }).catch(() => undefined);
+
+  revalidatePath("/");
+  revalidatePath("/activity");
+}
 
 export async function recommendationAction(formData: FormData) {
   const id = String(formData.get("id") ?? "");

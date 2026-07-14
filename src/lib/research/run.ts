@@ -1,7 +1,7 @@
 import { and, asc, eq, inArray } from "drizzle-orm";
 import type { InferSelectModel } from "drizzle-orm";
 import { getDb } from "@/db";
-import { archiveRecords, beats, candidateFunnelItems, editorialRecommendations, researchActivity, researchCycles, researchInvestigations, researchRuns, researchStageBudgets, sources, stories, storyClusters } from "@/db/schema";
+import { archiveRecords, beats, candidateFunnelItems, editorialRecommendations, researchActivity, researchCycles, researchInvestigations, researchRuns, researchSettings, researchStageBudgets, sources, stories, storyClusters } from "@/db/schema";
 import { searchInternetArchive } from "@/lib/sources/internet-archive";
 import { searchLibraryOfCongress } from "@/lib/sources/loc";
 import type { ArchiveRecord, EditorialRecommendation } from "@/lib/types";
@@ -21,6 +21,7 @@ export async function runResearch() {
   if (!db) return { ok: false, error: "DATABASE_URL is not configured" };
 
   await ensureBeats();
+  if (!await isAutopilotEnabled()) return { ok: true, status: "paused" };
   const cycle = await claimNextCycle();
   if (!cycle) return { ok: true, status: "idle" };
 
@@ -37,6 +38,17 @@ export async function runResearch() {
     await logActivity(cycle, "error", "Research cycle failed", message, {});
     throw error;
   }
+}
+
+async function isAutopilotEnabled() {
+  const db = getDb();
+  if (!db) return false;
+  const [setting] = await db.select().from(researchSettings).where(eq(researchSettings.key, "autopilot")).limit(1).catch(() => []);
+  if (!setting) {
+    await db.insert(researchSettings).values({ key: "autopilot", value: { enabled: true } }).catch(() => undefined);
+    return true;
+  }
+  return setting.value.enabled !== false;
 }
 
 async function ensureBeats() {
