@@ -2,7 +2,7 @@ import Link from "next/link";
 import { desc, eq, ne } from "drizzle-orm";
 import { getDb } from "@/db";
 import { ensureResearchSchema } from "@/db/bootstrap";
-import { beats, editorialRecommendations, researchCycles, researchSettings, stories } from "@/db/schema";
+import { beats, candidateFunnelItems, editorialRecommendations, researchCycles, researchSettings, stories } from "@/db/schema";
 import { autopilotAction } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -12,6 +12,7 @@ export default async function Home() {
   if (db) await ensureResearchSchema();
   const beatRows = db ? await db.select().from(beats).where(eq(beats.active, true)).catch(() => []) : [];
   const cycleRows = db ? await db.select().from(researchCycles).orderBy(desc(researchCycles.createdAt)).limit(40).catch(() => []) : [];
+  const candidateRows = db ? await db.select().from(candidateFunnelItems).orderBy(desc(candidateFunnelItems.createdAt)).limit(12).catch(() => []) : [];
   const recommendations = db ? await db.select().from(editorialRecommendations).where(ne(editorialRecommendations.status, "dismissed")).orderBy(desc(editorialRecommendations.createdAt)).limit(10).catch(() => []) : [];
   const dossierRows = db ? await db.select().from(stories).orderBy(desc(stories.createdAt)).limit(10).catch(() => []) : [];
   const [autopilot] = db ? await db.select().from(researchSettings).where(eq(researchSettings.key, "autopilot")).limit(1).catch(() => []) : [];
@@ -101,7 +102,26 @@ export default async function Home() {
           </div>
           {recommendation.storyId ? <Link className="secondary" href={`/stories/${recommendation.storyId}`}>Open dossier</Link> : null}
         </div>
-      </article>) : <div className="empty"><h2>No recommendations yet</h2><p>Recommendations appear after a beat cycle passes discovery, funnel, investigation, and readiness gates.</p></div>}
+      </article>) : <div className="empty"><h2>No publishable recommendations yet</h2><p>The pipeline has run, but nothing has passed the evidence gate for editorial recommendation. The app is showing research decisions below instead of inventing output.</p></div>}
+    </section>
+
+    <section className="section-head">
+      <div>
+        <p className="eyebrow">Research decisions</p>
+        <h1>What the agent actually found</h1>
+      </div>
+      <span className="count">{candidateRows.length} recent decisions</span>
+    </section>
+
+    <section className="decision-list">
+      {candidateRows.length ? candidateRows.map((candidate) => <article className="decision-card" key={candidate.id}>
+        <div className="meta">
+          <span className="pill">{candidate.status}</span>
+          {candidate.rejectionCode ? <span className="pill">{candidate.rejectionCode.replaceAll("_", " ")}</span> : null}
+        </div>
+        <h2>{candidate.title}</h2>
+        <p>{candidate.rejectionReason ?? candidate.hypothesis}</p>
+      </article>) : <div className="empty"><h2>No research decisions yet</h2><p>The next scheduler run will write real archive decisions here.</p></div>}
     </section>
   </main>;
 }

@@ -251,6 +251,29 @@ async function runDossierReadinessStage(cycle: CycleRow) {
     }).where(eq(researchInvestigations.id, investigation.id));
 
     if (!readiness.ready) {
+      const sourceIds = Array.from(new Set(readiness.claimEvidence.flatMap((claim) => claim.sourceIds)));
+      if (readiness.score >= 45 && sourceIds.length) {
+        const [recommendation] = await db.insert(editorialRecommendations).values({
+          cycleId: cycle.id,
+          beatId: cycle.beatId,
+          status: "investigate_further",
+          workingTitle: investigation.workingTitle,
+          premise: investigation.premise,
+          narrativeHook: stringArray(investigation.researchQuestions)[0] ?? investigation.premise,
+          whyOverlooked: "The lead came from low-visibility archive records and needs more independent evidence before development.",
+          strongestEvidence: readiness.claimEvidence,
+          originalityAssessment: stringArray(investigation.originalitySignals).join(" ") || "Originality is unresolved until more source work is completed.",
+          unresolvedRisks: readiness.risks,
+          confidence: readiness.score,
+          researchCompleteness: readiness.score,
+          recommendedNextAction: "Investigate further before developing a dossier.",
+          scores: { narrativeTension: 55, sourceStrength: investigation.evidenceDepth, originality: 55, humanInterest: 55, historicalConsequence: 45, researchability: readiness.score },
+          sourceIds,
+          followUpQueries: stringArray(investigation.followUpQueries),
+          downgradeReason: readiness.risks.join(" "),
+        }).returning();
+        await logActivity(cycle, "recommended", "Further investigation recommendation saved", `${investigation.workingTitle} needs more evidence before a dossier.`, { recommendationId: recommendation.id, readinessScore: readiness.score });
+      }
       downgraded += 1;
       await logActivity(cycle, "downgraded", "Investigation failed readiness gate", `${investigation.workingTitle}: ${readiness.risks.join(" ")}`, { investigationId: investigation.id, readinessScore: readiness.score });
       continue;

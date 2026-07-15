@@ -278,7 +278,8 @@ p {
 }
 
 .recommendations,
-.timeline {
+.timeline,
+.decision-list {
   display: grid;
   gap: 14px;
 }
@@ -287,6 +288,7 @@ p {
 .stat,
 .card,
 .beat-card,
+.decision-card,
 .detail,
 .empty,
 .event {
@@ -297,6 +299,7 @@ p {
 .recommendation,
 .card,
 .beat-card,
+.decision-card,
 .empty,
 .stat {
   padding: 20px;
@@ -320,6 +323,7 @@ p {
 
 .beat-card p,
 .card p,
+.decision-card p,
 .recommendation p,
 .detail p,
 .empty p,
