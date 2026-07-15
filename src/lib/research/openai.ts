@@ -313,7 +313,7 @@ export async function buildInvestigationPlans(candidates: InvestigationInput[]):
           },
         },
       },
-    });
+    }, { timeout: 12_000, maxRetries: 0 });
 
     const parsed = investigationPlanSchema.parse(JSON.parse(response.output_text));
     return plansOrDeterministic(parsed.plans, candidates);

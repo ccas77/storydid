@@ -203,8 +203,11 @@ async function runDeepResearchStage(cycle: CycleRow) {
     querySet: queries,
   }).returning() : [];
   const followUpRecordsByQuery = new Map<string, ArchiveRecord[]>();
-  for (const query of queries) {
+  const followUpBatches = await Promise.all(queries.map(async (query) => {
     const records = dedupeRecords(await discoverRecords([query], 4)).slice(0, 6);
+    return { query, records };
+  }));
+  for (const { query, records } of followUpBatches) {
     followUpRecordsByQuery.set(query, records);
     if (run) await persistArchiveRecords({ cycle, runId: run.id, records });
   }
