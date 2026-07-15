@@ -7,6 +7,7 @@ import { ensureResearchSchema } from "@/db/bootstrap";
 import { archiveRecords, beats, editorialRecommendations, researchActivity, researchCycles, researchSettings, sources, stories } from "@/db/schema";
 import { isAuthorizedAction } from "@/lib/action-auth";
 import { makeBriefSeeds, slugFromBrief } from "@/lib/research/queries";
+import { archiveLookupIds } from "@/lib/research/source-ids";
 
 export async function autopilotAction(formData: FormData) {
   if (!isAuthorizedAction(formData)) return;
@@ -135,7 +136,7 @@ export async function recommendationAction(formData: FormData) {
 async function attachSources(storyId: string, sourceIds: string[]) {
   const db = getDb();
   if (!db || !sourceIds.length) return;
-  const records = await db.select().from(archiveRecords).where(inArray(archiveRecords.externalId, sourceIds));
+  const records = await db.select().from(archiveRecords).where(inArray(archiveRecords.externalId, archiveLookupIds(sourceIds)));
   if (!records.length) return;
   await db.insert(sources).values(records.map((record) => ({
     storyId,

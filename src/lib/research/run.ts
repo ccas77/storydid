@@ -13,6 +13,8 @@ import { buildInvestigationPlans, buildResearchDecisions } from "./openai";
 import { evidenceDepthScore, groupSourceIndependence, shouldDowngradeInvestigation } from "./investigation";
 import { assessDossierReadiness } from "./readiness";
 import { prepareDossierDraft } from "./dossier";
+import { compareClaimableCycles } from "./cycle-claim";
+import { archiveLookupIds } from "./source-ids";
 
 const DOSSIER_CONFIDENCE_THRESHOLD = 70;
 const DOSSIER_COMPLETENESS_THRESHOLD = 72;
@@ -64,10 +66,11 @@ async function ensureBeats() {
 async function claimNextCycle() {
   const db = getDb();
   if (!db) return undefined;
-  const [existing] = await db.select().from(researchCycles)
+  const existingCycles = await db.select().from(researchCycles)
     .where(inArray(researchCycles.status, ["queued", "running"]))
     .orderBy(asc(researchCycles.createdAt))
-    .limit(1);
+    .limit(50);
+  const existing = existingCycles.sort(compareClaimableCycles)[0];
   if (existing) {
     const [claimed] = await db.update(researchCycles).set({ status: "running", lockedAt: new Date(), updatedAt: new Date() }).where(eq(researchCycles.id, existing.id)).returning();
     return claimed;
@@ -543,7 +546,7 @@ async function persistSources(storyId: string, sourceIds: string[], records: Arc
 async function attachSourcesFromArchiveRecords(storyId: string, sourceIds: string[]) {
   const db = getDb();
   if (!db || !sourceIds.length) return;
-  const lookupIds = Array.from(new Set(sourceIds.flatMap((sourceId) => [sourceId, stripSourcePrefix(sourceId)])));
+  const lookupIds = archiveLookupIds(sourceIds);
   const records = await db.select().from(archiveRecords).where(inArray(archiveRecords.externalId, lookupIds));
   if (!records.length) return;
   await db.insert(sources).values(records.map((record) => ({
@@ -560,10 +563,6 @@ async function attachSourcesFromArchiveRecords(storyId: string, sourceIds: strin
 
 function evidenceSourceId(record: ArchiveRecord) {
   return `${record.source}:${record.id}`;
-}
-
-function stripSourcePrefix(sourceId: string) {
-  return sourceId.replace(/^(loc|internet_archive):/, "");
 }
 
 function editorialScore(recommendation: EditorialRecommendation) {

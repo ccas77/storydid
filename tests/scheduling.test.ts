@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { selectNextBeat, type BeatScheduleState } from "../src/lib/research/beats";
+import { compareClaimableCycles } from "../src/lib/research/cycle-claim";
 
 const baseBeat = {
   description: "test beat",
@@ -36,4 +37,23 @@ test("selectNextBeat uses name as a stable tie breaker", () => {
   ];
 
   assert.equal(selectNextBeat(beats, now)?.slug, "alpha");
+});
+
+test("cycle claiming prioritizes queued user briefs over older scheduled work", () => {
+  const cycles = [
+    { id: "old-running", status: "running", createdAt: new Date("2026-07-14T09:00:00Z"), stageState: {} },
+    { id: "old-queued", status: "queued", createdAt: new Date("2026-07-14T10:00:00Z"), stageState: {} },
+    { id: "brief", status: "queued", createdAt: new Date("2026-07-14T11:00:00Z"), stageState: { source: "user_brief" } },
+  ];
+
+  assert.equal(cycles.sort(compareClaimableCycles)[0].id, "brief");
+});
+
+test("cycle claiming keeps a running user brief moving through its stages", () => {
+  const cycles = [
+    { id: "old-queued", status: "queued", createdAt: new Date("2026-07-14T10:00:00Z"), stageState: {} },
+    { id: "brief", status: "running", createdAt: new Date("2026-07-14T11:00:00Z"), stageState: { source: "user_brief" } },
+  ];
+
+  assert.equal(cycles.sort(compareClaimableCycles)[0].id, "brief");
 });
