@@ -5,9 +5,11 @@ import { eq, inArray } from "drizzle-orm";
 import { getDb } from "@/db";
 import { ensureResearchSchema } from "@/db/bootstrap";
 import { archiveRecords, beats, editorialRecommendations, researchActivity, researchCycles, researchSettings, sources, stories } from "@/db/schema";
+import { isAuthorizedAction } from "@/lib/action-auth";
 import { makeBriefSeeds, slugFromBrief } from "@/lib/research/queries";
 
 export async function autopilotAction(formData: FormData) {
+  if (!isAuthorizedAction(formData)) return;
   const enabled = String(formData.get("enabled") ?? "") === "true";
   const db = getDb();
   if (!db) return;
@@ -32,6 +34,7 @@ export async function autopilotAction(formData: FormData) {
 }
 
 export async function startResearchBriefAction(formData: FormData) {
+  if (!isAuthorizedAction(formData)) return;
   const prompt = String(formData.get("prompt") ?? "").replace(/\s+/g, " ").trim();
   const db = getDb();
   if (!db || prompt.length < 12) return;
@@ -69,6 +72,7 @@ export async function startResearchBriefAction(formData: FormData) {
 }
 
 export async function recommendationAction(formData: FormData) {
+  if (!isAuthorizedAction(formData)) return;
   const id = String(formData.get("id") ?? "");
   const action = String(formData.get("action") ?? "");
   const db = getDb();

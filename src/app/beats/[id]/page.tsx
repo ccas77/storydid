@@ -4,7 +4,9 @@ import { notFound } from "next/navigation";
 import { getDb } from "@/db";
 import { ensureResearchSchema } from "@/db/bootstrap";
 import { beats, candidateFunnelItems, editorialRecommendations, researchCycles, researchInvestigations, researchStageBudgets, stories } from "@/db/schema";
+import { accessCodeConfigured, accessCodeReady } from "@/lib/action-auth";
 import { isCitedDossier, isResearchedRecommendation } from "@/lib/research/display";
+import { recommendationAction } from "@/app/actions";
 
 export const dynamic = "force-dynamic";
 
@@ -25,6 +27,8 @@ export default async function BeatPage({ params }: { params: Promise<{ id: strin
   const rawDossiers = await db.select().from(stories).where(eq(stories.beatId, beat.id)).orderBy(desc(stories.createdAt)).limit(16).catch(() => []);
   const recommendations = rawRecommendations.filter(isResearchedRecommendation).slice(0, 8);
   const dossiers = rawDossiers.filter(isCitedDossier).slice(0, 8);
+  const needsAccessCode = accessCodeConfigured();
+  const controlsReady = accessCodeReady();
 
   return <main className="shell">
     <header className="top">
@@ -95,6 +99,7 @@ export default async function BeatPage({ params }: { params: Promise<{ id: strin
         <h2>{recommendation.workingTitle}</h2>
         <p>{recommendation.premise}</p>
         {recommendation.storyId ? <Link className="secondary" href={`/stories/${recommendation.storyId}`}>Open dossier</Link> : null}
+        <RecommendationActions id={recommendation.id} needsAccessCode={needsAccessCode} controlsReady={controlsReady} />
       </article>)}
       {dossiers.map((story) => <Link className="card" href={`/stories/${story.id}`} key={story.id}>
         <div className="meta"><span className="pill">dossier</span><span className="pill">{story.confidenceScore}% confidence</span></div>
@@ -124,4 +129,20 @@ function List({ items }: { items: string[] }) {
 
 function stringArray(value: unknown) {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+}
+
+function RecommendationActions({ id, needsAccessCode, controlsReady }: { id: string; needsAccessCode: boolean; controlsReady: boolean }) {
+  return <div className="actions">
+    {[
+      ["develop", "Develop", "primary"],
+      ["improve-angle", "Improve angle", "secondary"],
+      ["investigate-further", "Investigate further", "secondary"],
+      ["dismiss", "Dismiss", "ghost"],
+    ].map(([action, label, className]) => <form action={recommendationAction} key={action}>
+      <input type="hidden" name="id" value={id} />
+      <input type="hidden" name="action" value={action} />
+      {needsAccessCode ? <input className="access-code" name="accessCode" type="password" autoComplete="off" placeholder="Owner access code" required /> : null}
+      <button className={className} type="submit" disabled={!controlsReady}>{label}</button>
+    </form>)}
+  </div>;
 }

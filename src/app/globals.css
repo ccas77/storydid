@@ -181,9 +181,31 @@ a {
   line-height: 1.5;
 }
 
-.brief-form textarea:focus {
+.brief-form textarea:focus,
+.access-code:focus {
   outline: 2px solid var(--accent-soft);
   border-color: var(--accent);
+}
+
+.access-code {
+  width: 100%;
+  min-height: 38px;
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: #fff;
+  color: var(--ink);
+  font: inherit;
+}
+
+.warning {
+  color: var(--accent);
+  font-weight: 800;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: .55;
 }
 
 .switch-form {

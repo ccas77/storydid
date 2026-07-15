@@ -1,6 +1,7 @@
 import OpenAI from "openai";
 import { z } from "zod";
 import type { ArchiveRecord, InvestigationPlan, ResearchDecisionSet, StoryDossier } from "@/lib/types";
+import { evidenceDepthScore, groupSourceIndependence, originalitySignals, researchQuestionsFor, shouldDowngradeInvestigation } from "./investigation";
 import type { InvestigationInput } from "./investigation";
 
 const scoreSchema = z.object({
@@ -251,7 +252,7 @@ export async function buildResearchDecisions(records: ArchiveRecord[]): Promise<
 
 export async function buildInvestigationPlans(candidates: InvestigationInput[]): Promise<InvestigationPlan[]> {
   const client = getOpenAI();
-  if (!client) return [];
+  if (!client) return buildDeterministicInvestigationPlans(candidates);
 
   const response = await client.responses.create({
     model: process.env.RESEARCH_MODEL ?? "gpt-5-mini",
@@ -318,6 +319,45 @@ export async function buildInvestigationPlans(candidates: InvestigationInput[]):
     ...plan,
     ...(downgradeReason ? { downgradeReason } : {}),
   }));
+}
+
+export function buildDeterministicInvestigationPlans(candidates: InvestigationInput[]): InvestigationPlan[] {
+  return candidates.map((candidate) => {
+    const questions = researchQuestionsFor(candidate);
+    const depth = evidenceDepthScore(candidate);
+    const sourceIndependence = groupSourceIndependence(candidate.evidenceSourceIds);
+    const downgradeReason = shouldDowngradeInvestigation(candidate);
+    return {
+      candidateExternalId: candidate.externalId,
+      workingTitle: titleCase(candidate.title),
+      premise: candidate.hypothesis,
+      researchQuestions: questions,
+      followUpQueries: followUpQueriesFor(candidate),
+      originalitySignals: originalitySignals(candidate),
+      evidenceDepth: depth,
+      sourceIndependence,
+      ...(downgradeReason ? { downgradeReason } : {}),
+    };
+  });
+}
+
+function followUpQueriesFor(candidate: InvestigationInput) {
+  const base = `${candidate.title} ${candidate.hypothesis}`
+    .replace(/https?:\/\/\S+/g, " ")
+    .replace(/[^a-zA-Z0-9\s-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 120);
+  return Array.from(new Set([
+    `${base} archive`,
+    `${base} newspaper`,
+    `${base} testimony`,
+    `${base} report`,
+  ])).slice(0, 4);
+}
+
+function titleCase(value: string) {
+  return value.replace(/\w\S*/g, (word) => word.charAt(0).toUpperCase() + word.slice(1));
 }
 
 export async function buildDossiers(records: ArchiveRecord[]): Promise<StoryDossier[]> {

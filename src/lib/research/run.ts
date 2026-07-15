@@ -10,6 +10,7 @@ import { DEFAULT_BEATS, selectNextBeat } from "./beats";
 import { buildCandidateFunnel, defaultStageBudget } from "./funnel";
 import { makeDailyQueries } from "./queries";
 import { buildInvestigationPlans, buildResearchDecisions } from "./openai";
+import { evidenceDepthScore, groupSourceIndependence, shouldDowngradeInvestigation } from "./investigation";
 import { assessDossierReadiness } from "./readiness";
 import { prepareDossierDraft } from "./dossier";
 
@@ -182,19 +183,51 @@ async function runDeepResearchStage(cycle: CycleRow) {
     .where(and(eq(candidateFunnelItems.cycleId, cycle.id), eq(candidateFunnelItems.status, "active")))
     .limit(budget.maxRecords);
   const active = candidates.filter((candidate) => candidate.status === "active").slice(0, budget.maxRecords);
-  const plans = await buildInvestigationPlans(active.map((candidate) => ({
+  const inputs = active.map((candidate) => ({
     externalId: candidate.externalId,
     title: candidate.title,
     hypothesis: candidate.hypothesis,
     evidenceSourceIds: Array.isArray(candidate.evidenceSourceIds) ? candidate.evidenceSourceIds : [],
     scores: scoreRecord(candidate.scores),
-  })));
+  }));
+  const plans = await buildInvestigationPlans(inputs);
   const planByExternalId = new Map(plans.map((plan) => [plan.candidateExternalId, plan]));
+  const queries = plans.flatMap((plan) => plan.followUpQueries).slice(0, budget.maxSearches);
+  const [run] = queries.length ? await db.insert(researchRuns).values({
+    cycleId: cycle.id,
+    beatId: cycle.beatId,
+    status: "deep_research_followup_running",
+    querySet: queries,
+  }).returning() : [];
+  const followUpRecordsByQuery = new Map<string, ArchiveRecord[]>();
+  for (const query of queries) {
+    const records = dedupeRecords(await discoverRecords([query], 4)).slice(0, 6);
+    followUpRecordsByQuery.set(query, records);
+    if (run) await persistArchiveRecords({ cycle, runId: run.id, records });
+  }
+  if (run) {
+    await db.update(researchRuns).set({
+      status: "deep_research_followup_completed",
+      candidatesFound: Array.from(followUpRecordsByQuery.values()).flat().length,
+      completedAt: new Date(),
+    }).where(eq(researchRuns.id, run.id));
+  }
 
   for (const candidate of active) {
     const plan = planByExternalId.get(candidate.externalId);
     if (!plan) continue;
-    const status = plan.downgradeReason ? "downgraded" : "active";
+    const input = inputs.find((item) => item.externalId === candidate.externalId);
+    const followUpRecords = plan.followUpQueries
+      .flatMap((query) => followUpRecordsByQuery.get(query) ?? [])
+      .filter((record) => isRelevantFollowUp(candidate.title, candidate.hypothesis, record));
+    const evidenceSourceIds = Array.from(new Set([
+      ...(Array.isArray(candidate.evidenceSourceIds) ? candidate.evidenceSourceIds : []),
+      ...followUpRecords.map(evidenceSourceId),
+    ]));
+    const evidenceDepth = input ? evidenceDepthScore({ evidenceSourceIds, scores: input.scores }) : Math.round(plan.evidenceDepth);
+    const downgradeReason = input ? shouldDowngradeInvestigation({ ...input, evidenceSourceIds }) : plan.downgradeReason;
+    const sourceIndependence = groupSourceIndependence(evidenceSourceIds);
+    const status = downgradeReason ? "downgraded" : "active";
     await db.insert(researchInvestigations).values({
       cycleId: cycle.id,
       beatId: cycle.beatId,
@@ -205,22 +238,29 @@ async function runDeepResearchStage(cycle: CycleRow) {
       researchQuestions: plan.researchQuestions,
       followUpQueries: plan.followUpQueries,
       originalitySignals: plan.originalitySignals,
-      evidenceDepth: Math.round(plan.evidenceDepth),
-      sourceIndependence: plan.sourceIndependence,
-      downgradeReason: plan.downgradeReason,
+      evidenceDepth: Math.round(evidenceDepth),
+      sourceIndependence,
+      downgradeReason,
     }).onConflictDoNothing({ target: researchInvestigations.candidateId }).catch(() => undefined);
     await db.update(candidateFunnelItems).set({ status: status === "downgraded" ? "rejected" : "researching", updatedAt: new Date() }).where(eq(candidateFunnelItems.id, candidate.id));
   }
 
-  const downgradedCount = plans.filter((plan) => plan.downgradeReason).length;
+  const downgradedCount = active.filter((candidate) => {
+    const input = inputs.find((item) => item.externalId === candidate.externalId);
+    if (!input) return true;
+    const plan = planByExternalId.get(candidate.externalId);
+    const followUpRecords = plan?.followUpQueries.flatMap((query) => followUpRecordsByQuery.get(query) ?? []).filter((record) => isRelevantFollowUp(candidate.title, candidate.hypothesis, record)) ?? [];
+    const evidenceSourceIds = Array.from(new Set([...input.evidenceSourceIds, ...followUpRecords.map(evidenceSourceId)]));
+    return Boolean(shouldDowngradeInvestigation({ ...input, evidenceSourceIds }));
+  }).length;
   const activeCount = plans.length - downgradedCount;
-  await persistStageBudget(cycle, "deep_research", budget, { usedRecords: active.length, usedModelCalls: plans.length ? 1 : 0 });
+  await persistStageBudget(cycle, "deep_research", budget, { usedRecords: active.length, usedSearches: queries.length, usedModelCalls: process.env.OPENAI_API_KEY && plans.length ? 1 : 0 });
   await db.update(researchCycles).set({
     currentStage: "dossier_readiness",
     stageState: { investigationsCreated: plans.length, activeCount, downgradedCount },
     updatedAt: new Date(),
   }).where(eq(researchCycles.id, cycle.id));
-  await logActivity(cycle, "deep_research", "Controlled investigations created", `Created ${plans.length} investigation plans; ${downgradedCount} were downgraded for weak evidence.`, { activeCount, downgradedCount });
+  await logActivity(cycle, "deep_research", "Controlled investigations created", `Created ${plans.length} investigation plans and ran ${queries.length} follow-up searches; ${downgradedCount} were downgraded for weak evidence.`, { activeCount, downgradedCount, followUpSearches: queries.length });
   return { ok: true, cycleId: cycle.id, stageCompleted: "deep_research", nextStage: "dossier_readiness", investigations: plans.length, downgradedCount };
 }
 
@@ -341,6 +381,22 @@ async function discoverRecords(queries: string[], limit = 12) {
 
 function dedupeRecords(records: ArchiveRecord[]) {
   return Array.from(new Map(records.map((record) => [record.url, record])).values());
+}
+
+function isRelevantFollowUp(title: string, hypothesis: string, record: ArchiveRecord) {
+  const anchor = keywordSet(`${title} ${hypothesis}`);
+  const target = keywordSet(`${record.title} ${record.description ?? ""}`);
+  const overlap = [...anchor].filter((term) => target.has(term)).length;
+  return overlap >= 2 || (record.source === "internet_archive" && overlap >= 1);
+}
+
+function keywordSet(value: string) {
+  return new Set(value
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]+/g, " ")
+    .split(/\s+/)
+    .filter((term) => term.length > 4)
+    .filter((term) => !["image", "newspaper", "archive", "daily", "tribune", "record", "around"].includes(term)));
 }
 
 async function persistArchiveRecords({ cycle, runId, records }: { cycle: CycleRow; runId: string; records: ArchiveRecord[] }) {
