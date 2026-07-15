@@ -44,6 +44,31 @@ test("buildCandidateFunnel marks duplicate records with a structured reason", ()
   assert.deepEqual(decisions[0].evidenceSourceIds.sort(), ["loc:a", "loc:b"].sort());
 });
 
+test("buildCandidateFunnel merges related cross-archive evidence into the same story", () => {
+  const decisions = buildCandidateFunnel([
+    record({
+      id: "91149767",
+      title: "The Mather mine disaster",
+      url: "https://www.loc.gov/item/91149767/",
+      location: "Mather, Pennsylvania",
+      description: "Booklet about the Mather mine disaster, casualties, and official reports.",
+      source: "loc",
+    }),
+    record({
+      id: "MCU_1928052401",
+      title: "The Macleod times and Macleod weekly news (1928-05-24)",
+      url: "https://archive.org/details/MCU_1928052401",
+      location: "Fort Macleod, Alberta",
+      description: "Disaster in Mather, Pennsylvania mine: 159 still entombed; thirteen rescued alive.",
+      source: "internet_archive",
+    }),
+  ]);
+
+  assert.equal(decisions[0].status, "active");
+  assert.ok(decisions[0].evidenceSourceIds.includes("loc:91149767"));
+  assert.ok(decisions[0].evidenceSourceIds.includes("internet_archive:MCU_1928052401"));
+});
+
 test("applyRecordBudget caps candidate work", () => {
   const items = [1, 2, 3, 4, 5];
 

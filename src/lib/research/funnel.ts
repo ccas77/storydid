@@ -125,7 +125,7 @@ export function buildCandidateFunnel(records: ArchiveRecord[], budget = defaultS
       scores: scoreRecord(record),
     };
   });
-  return mergeDuplicateEvidence(decisions);
+  return mergeRelatedEvidence(mergeDuplicateEvidence(decisions));
 }
 
 export function rejectRecord(record: ArchiveRecord): { code: Exclude<RejectionCode, "duplicate">; reason: string } | undefined {
@@ -172,6 +172,36 @@ function mergeDuplicateEvidence(decisions: FunnelDecision[]) {
       evidenceSourceIds: Array.from(new Set(evidenceByRoot.get(decision.record.id) ?? decision.evidenceSourceIds)),
     };
   });
+}
+
+function mergeRelatedEvidence(decisions: FunnelDecision[]) {
+  return decisions.map((decision) => {
+    if (decision.status !== "active") return decision;
+    const relatedEvidence = decisions
+      .filter((other) => other.status === "active" && recordsAppearRelated(decision, other))
+      .flatMap((other) => other.evidenceSourceIds);
+    return {
+      ...decision,
+      evidenceSourceIds: Array.from(new Set([...decision.evidenceSourceIds, ...relatedEvidence])),
+    };
+  });
+}
+
+function recordsAppearRelated(a: FunnelDecision, b: FunnelDecision) {
+  if (a.record.id === b.record.id) return true;
+  const aTerms = candidateTerms(a);
+  const bTerms = candidateTerms(b);
+  const overlap = [...aTerms].filter((term) => bTerms.has(term));
+  return overlap.length >= 2 && overlap.some((term) => term.length >= 6);
+}
+
+function candidateTerms(decision: FunnelDecision) {
+  return new Set(`${decision.record.title} ${decision.record.description ?? ""} ${decision.hypothesis}`
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]+/g, " ")
+    .split(/\s+/)
+    .filter((term) => term.length > 4)
+    .filter((term) => !["about", "after", "around", "before", "between", "committee", "disaster", "great", "investigation", "report", "testimony"].includes(term)));
 }
 
 function evidenceSourceId(record: ArchiveRecord) {
