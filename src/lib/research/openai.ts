@@ -254,71 +254,82 @@ export async function buildInvestigationPlans(candidates: InvestigationInput[]):
   const client = getOpenAI();
   if (!client) return buildDeterministicInvestigationPlans(candidates);
 
-  const response = await client.responses.create({
-    model: process.env.RESEARCH_MODEL ?? "gpt-5-mini",
-    input: [
-      {
-        role: "system",
-        content: [
-          "You are StoryDid's investigation controller.",
-          "For each candidate, decide what evidence is missing, create bounded research questions, estimate evidence depth, assess originality signals, and group independent source bases.",
-          "Downgrade candidates when evidence depth or narrative signal is weak.",
-          "Do not write a dossier. Do not invent facts. Only plan controlled follow-up investigation."
-        ].join(" "),
-      },
-      { role: "user", content: JSON.stringify(candidates.slice(0, 18)) },
-    ],
-    text: {
-      format: {
-        type: "json_schema",
-        name: "investigation_plans",
-        strict: true,
-        schema: {
-          type: "object",
-          additionalProperties: false,
-          required: ["plans"],
-          properties: {
-            plans: {
-              type: "array",
-              items: {
-                type: "object",
-                additionalProperties: false,
-                required: ["candidateExternalId", "workingTitle", "premise", "researchQuestions", "followUpQueries", "originalitySignals", "evidenceDepth", "sourceIndependence", "downgradeReason"],
-                properties: {
-                  candidateExternalId: { type: "string" },
-                  workingTitle: { type: "string" },
-                  premise: { type: "string" },
-                  researchQuestions: { type: "array", items: { type: "string" } },
-                  followUpQueries: { type: "array", items: { type: "string" } },
-                  originalitySignals: { type: "array", items: { type: "string" } },
-                  evidenceDepth: { type: "number" },
-                  sourceIndependence: {
-                    type: "array",
-                    items: {
-                      type: "object",
-                      additionalProperties: false,
-                      required: ["group", "sourceIds"],
-                      properties: {
-                        group: { type: "string" },
-                        sourceIds: { type: "array", items: { type: "string" } },
+  try {
+    const response = await client.responses.create({
+      model: process.env.RESEARCH_MODEL ?? "gpt-5-mini",
+      input: [
+        {
+          role: "system",
+          content: [
+            "You are StoryDid's investigation controller.",
+            "For each candidate, decide what evidence is missing, create bounded research questions, estimate evidence depth, assess originality signals, and group independent source bases.",
+            "Downgrade candidates when evidence depth or narrative signal is weak.",
+            "Do not write a dossier. Do not invent facts. Only plan controlled follow-up investigation."
+          ].join(" "),
+        },
+        { role: "user", content: JSON.stringify(candidates.slice(0, 18)) },
+      ],
+      text: {
+        format: {
+          type: "json_schema",
+          name: "investigation_plans",
+          strict: true,
+          schema: {
+            type: "object",
+            additionalProperties: false,
+            required: ["plans"],
+            properties: {
+              plans: {
+                type: "array",
+                items: {
+                  type: "object",
+                  additionalProperties: false,
+                  required: ["candidateExternalId", "workingTitle", "premise", "researchQuestions", "followUpQueries", "originalitySignals", "evidenceDepth", "sourceIndependence", "downgradeReason"],
+                  properties: {
+                    candidateExternalId: { type: "string" },
+                    workingTitle: { type: "string" },
+                    premise: { type: "string" },
+                    researchQuestions: { type: "array", items: { type: "string" } },
+                    followUpQueries: { type: "array", items: { type: "string" } },
+                    originalitySignals: { type: "array", items: { type: "string" } },
+                    evidenceDepth: { type: "number" },
+                    sourceIndependence: {
+                      type: "array",
+                      items: {
+                        type: "object",
+                        additionalProperties: false,
+                        required: ["group", "sourceIds"],
+                        properties: {
+                          group: { type: "string" },
+                          sourceIds: { type: "array", items: { type: "string" } },
+                        },
                       },
                     },
+                    downgradeReason: { type: ["string", "null"] },
                   },
-                  downgradeReason: { type: ["string", "null"] },
                 },
               },
             },
           },
         },
       },
-    },
-  });
+    });
 
-  const parsed = investigationPlanSchema.parse(JSON.parse(response.output_text));
-  return parsed.plans.map(({ downgradeReason, ...plan }) => ({
+    const parsed = investigationPlanSchema.parse(JSON.parse(response.output_text));
+    return plansOrDeterministic(parsed.plans, candidates);
+  } catch {
+    return buildDeterministicInvestigationPlans(candidates);
+  }
+}
+
+type ModelInvestigationPlan = Omit<InvestigationPlan, "downgradeReason"> & { downgradeReason?: string | null };
+
+export function plansOrDeterministic(plans: ModelInvestigationPlan[], candidates: InvestigationInput[]): InvestigationPlan[] {
+  const normalized = plans.map(({ downgradeReason, ...plan }) => ({
     ...plan,
     ...(downgradeReason ? { downgradeReason } : {}),
   }));
+  return normalized.length ? normalized : buildDeterministicInvestigationPlans(candidates);
 }
 
 export function buildDeterministicInvestigationPlans(candidates: InvestigationInput[]): InvestigationPlan[] {
