@@ -14,6 +14,7 @@ export type FunnelDecision = {
   rejectionCode?: RejectionCode;
   rejectionReason?: string;
   duplicateOf?: string;
+  evidenceSourceIds: string[];
   scores: {
     narrativeSignal: number;
     sourceSignal: number;
@@ -83,7 +84,7 @@ export function normalizeCandidateKey(record: ArchiveRecord) {
 
 export function buildCandidateFunnel(records: ArchiveRecord[], budget = defaultStageBudget("candidate_funnel")) {
   const seen = new Map<string, string>();
-  return applyRecordBudget(records, budget).map((record): FunnelDecision => {
+  const decisions = applyRecordBudget(records, budget).map((record): FunnelDecision => {
     const normalizedKey = normalizeCandidateKey(record);
     const duplicateOf = seen.get(normalizedKey);
     if (duplicateOf) {
@@ -95,6 +96,7 @@ export function buildCandidateFunnel(records: ArchiveRecord[], budget = defaultS
         rejectionCode: "duplicate",
         rejectionReason: "Record appears to describe the same underlying lead as an earlier archive record.",
         duplicateOf,
+        evidenceSourceIds: [evidenceSourceId(record)],
         scores: scoreRecord(record),
       };
     }
@@ -109,6 +111,7 @@ export function buildCandidateFunnel(records: ArchiveRecord[], budget = defaultS
         status: "rejected",
         rejectionCode: rejection.code,
         rejectionReason: rejection.reason,
+        evidenceSourceIds: [evidenceSourceId(record)],
         scores: scoreRecord(record),
       };
     }
@@ -118,9 +121,11 @@ export function buildCandidateFunnel(records: ArchiveRecord[], budget = defaultS
       normalizedKey,
       hypothesis: hypothesisFor(record),
       status: "active",
+      evidenceSourceIds: [evidenceSourceId(record)],
       scores: scoreRecord(record),
     };
   });
+  return mergeDuplicateEvidence(decisions);
 }
 
 export function rejectRecord(record: ArchiveRecord): { code: Exclude<RejectionCode, "duplicate">; reason: string } | undefined {
@@ -149,4 +154,26 @@ function hypothesisFor(record: ArchiveRecord) {
   const place = record.location ? ` in ${record.location}` : "";
   const date = record.date ? ` around ${record.date}` : "";
   return `${record.title}${place}${date}`.trim();
+}
+
+function mergeDuplicateEvidence(decisions: FunnelDecision[]) {
+  const evidenceByRoot = new Map<string, string[]>();
+  for (const decision of decisions) {
+    const rootId = decision.duplicateOf ?? decision.record.id;
+    evidenceByRoot.set(rootId, [
+      ...(evidenceByRoot.get(rootId) ?? []),
+      ...decision.evidenceSourceIds,
+    ]);
+  }
+  return decisions.map((decision) => {
+    if (decision.status !== "active") return decision;
+    return {
+      ...decision,
+      evidenceSourceIds: Array.from(new Set(evidenceByRoot.get(decision.record.id) ?? decision.evidenceSourceIds)),
+    };
+  });
+}
+
+function evidenceSourceId(record: ArchiveRecord) {
+  return `${record.source}:${record.id}`;
 }

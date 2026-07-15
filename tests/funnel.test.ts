@@ -41,6 +41,7 @@ test("buildCandidateFunnel marks duplicate records with a structured reason", ()
   assert.equal(decisions[1].status, "duplicate");
   assert.equal(decisions[1].rejectionCode, "duplicate");
   assert.equal(decisions[1].duplicateOf, "a");
+  assert.deepEqual(decisions[0].evidenceSourceIds.sort(), ["loc:a", "loc:b"].sort());
 });
 
 test("applyRecordBudget caps candidate work", () => {

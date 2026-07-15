@@ -157,7 +157,7 @@ async function runCandidateFunnelStage(cycle: CycleRow) {
         rejectionReason: decision.rejectionReason,
         duplicateOf: decision.duplicateOf,
         scores: decision.scores,
-        evidenceSourceIds: [evidenceSourceId(decision.record)],
+        evidenceSourceIds: decision.evidenceSourceIds,
       };
     })).onConflictDoNothing({ target: [candidateFunnelItems.cycleId, candidateFunnelItems.externalId] }).catch(() => undefined);
   }
