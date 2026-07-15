@@ -132,6 +132,7 @@ async function runCandidateFunnelStage(cycle: CycleRow) {
   if (!db) return { ok: false, error: "DATABASE_URL is not configured" };
   const budget = defaultStageBudget("candidate_funnel");
   const rows = await db.select().from(archiveRecords).where(eq(archiveRecords.cycleId, cycle.id)).limit(budget.maxRecords);
+  const beat = await getBeat(cycle.beatId);
   const records = rows.map((record) => ({
     id: record.externalId,
     title: record.title,
@@ -141,7 +142,7 @@ async function runCandidateFunnelStage(cycle: CycleRow) {
     description: record.description ?? undefined,
     source: record.source === "internet_archive" ? "internet_archive" as const : "loc" as const,
   }));
-  const decisions = buildCandidateFunnel(records, budget);
+  const decisions = buildCandidateFunnel(records, budget, Array.isArray(beat?.querySeeds) ? beat.querySeeds.join(" ") : "");
   const rowByExternalId = new Map(rows.map((record) => [record.externalId, record]));
 
   if (decisions.length) {

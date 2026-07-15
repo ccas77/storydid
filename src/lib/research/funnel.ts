@@ -82,7 +82,8 @@ export function normalizeCandidateKey(record: ArchiveRecord) {
     .slice(0, 180);
 }
 
-export function buildCandidateFunnel(records: ArchiveRecord[], budget = defaultStageBudget("candidate_funnel")) {
+export function buildCandidateFunnel(records: ArchiveRecord[], budget = defaultStageBudget("candidate_funnel"), context = "") {
+  const contextTerms = relevanceTerms(context);
   const seen = new Map<string, string>();
   const decisions = applyRecordBudget(records, budget).map((record): FunnelDecision => {
     const normalizedKey = normalizeCandidateKey(record);
@@ -111,6 +112,18 @@ export function buildCandidateFunnel(records: ArchiveRecord[], budget = defaultS
         status: "rejected",
         rejectionCode: rejection.code,
         rejectionReason: rejection.reason,
+        evidenceSourceIds: [evidenceSourceId(record)],
+        scores: scoreRecord(record),
+      };
+    }
+    if (contextTerms.size && !recordMatchesContext(record, contextTerms)) {
+      return {
+        record,
+        normalizedKey,
+        hypothesis: hypothesisFor(record),
+        status: "rejected",
+        rejectionCode: "low_narrative_potential",
+        rejectionReason: "The record does not match enough distinctive terms from the beat or research brief.",
         evidenceSourceIds: [evidenceSourceId(record)],
         scores: scoreRecord(record),
       };
@@ -196,12 +209,22 @@ function recordsAppearRelated(a: FunnelDecision, b: FunnelDecision) {
 }
 
 function candidateTerms(decision: FunnelDecision) {
-  return new Set(`${decision.record.title} ${decision.record.description ?? ""} ${decision.hypothesis}`
+  return relevanceTerms(`${decision.record.title} ${decision.record.description ?? ""} ${decision.hypothesis}`);
+}
+
+function recordMatchesContext(record: ArchiveRecord, contextTerms: Set<string>) {
+  const terms = relevanceTerms(`${record.title} ${record.description ?? ""} ${record.location ?? ""} ${record.date ?? ""}`);
+  const overlap = [...contextTerms].filter((term) => terms.has(term));
+  return overlap.length >= Math.min(2, contextTerms.size);
+}
+
+function relevanceTerms(value: string) {
+  return new Set(value
     .toLowerCase()
     .replace(/[^a-z0-9\s]+/g, " ")
     .split(/\s+/)
     .filter((term) => term.length > 4)
-    .filter((term) => !["about", "after", "around", "before", "between", "committee", "disaster", "great", "investigation", "report", "testimony"].includes(term)));
+    .filter((term) => !["about", "after", "around", "before", "between", "committee", "disaster", "great", "independent", "investigation", "newspaper", "report", "testimony"].includes(term)));
 }
 
 function evidenceSourceId(record: ArchiveRecord) {

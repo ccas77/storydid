@@ -69,6 +69,21 @@ test("buildCandidateFunnel merges related cross-archive evidence into the same s
   assert.ok(decisions[0].evidenceSourceIds.includes("internet_archive:MCU_1928052401"));
 });
 
+test("buildCandidateFunnel rejects records unrelated to a research brief", () => {
+  const decisions = buildCandidateFunnel([
+    record({
+      id: "cia-article",
+      title: "CIA Reading Room congressional investigation testimony scandal",
+      url: "https://archive.org/details/cia-readingroom-document",
+      description: "Investigation testimony about congressional intelligence oversight, accusations, disputed evidence, and institutional scandal.",
+      source: "internet_archive",
+    }),
+  ], undefined, "Mather mine disaster testimony investigation 1928 independent newspaper report");
+
+  assert.equal(decisions[0].status, "rejected");
+  assert.equal(decisions[0].rejectionReason, "The record does not match enough distinctive terms from the beat or research brief.");
+});
+
 test("applyRecordBudget caps candidate work", () => {
   const items = [1, 2, 3, 4, 5];
 
