@@ -10,6 +10,7 @@ import { prepareDossierDraft } from "../src/lib/research/dossier";
 test("pipeline can advance a research brief into a cited dossier draft", () => {
   const seeds = makeBriefSeeds("factory explosion inquest testimony in Ohio");
   assert.ok(seeds.some((seed) => seed.includes("factory explosion")));
+  assert.ok(seeds.some((seed) => seed.split(" ").length <= 3));
 
   const records: ArchiveRecord[] = [
     {
