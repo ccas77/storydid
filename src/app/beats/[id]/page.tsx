@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { getDb } from "@/db";
 import { ensureResearchSchema } from "@/db/bootstrap";
 import { beats, candidateFunnelItems, editorialRecommendations, researchCycles, researchInvestigations, researchStageBudgets, stories } from "@/db/schema";
+import { isCitedDossier, isResearchedRecommendation } from "@/lib/research/display";
 
 export const dynamic = "force-dynamic";
 
@@ -20,8 +21,10 @@ export default async function BeatPage({ params }: { params: Promise<{ id: strin
   const candidates = latest ? await db.select().from(candidateFunnelItems).where(eq(candidateFunnelItems.cycleId, latest.id)).catch(() => []) : [];
   const investigations = latest ? await db.select().from(researchInvestigations).where(eq(researchInvestigations.cycleId, latest.id)).catch(() => []) : [];
   const budgets = latest ? await db.select().from(researchStageBudgets).where(eq(researchStageBudgets.cycleId, latest.id)).catch(() => []) : [];
-  const recommendations = await db.select().from(editorialRecommendations).where(eq(editorialRecommendations.beatId, beat.id)).orderBy(desc(editorialRecommendations.createdAt)).limit(8).catch(() => []);
-  const dossiers = await db.select().from(stories).where(eq(stories.beatId, beat.id)).orderBy(desc(stories.createdAt)).limit(8).catch(() => []);
+  const rawRecommendations = await db.select().from(editorialRecommendations).where(eq(editorialRecommendations.beatId, beat.id)).orderBy(desc(editorialRecommendations.createdAt)).limit(16).catch(() => []);
+  const rawDossiers = await db.select().from(stories).where(eq(stories.beatId, beat.id)).orderBy(desc(stories.createdAt)).limit(16).catch(() => []);
+  const recommendations = rawRecommendations.filter(isResearchedRecommendation).slice(0, 8);
+  const dossiers = rawDossiers.filter(isCitedDossier).slice(0, 8);
 
   return <main className="shell">
     <header className="top">

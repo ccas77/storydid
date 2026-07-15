@@ -3,6 +3,7 @@ import { desc, eq, ne } from "drizzle-orm";
 import { getDb } from "@/db";
 import { ensureResearchSchema } from "@/db/bootstrap";
 import { beats, candidateFunnelItems, editorialRecommendations, researchCycles, researchSettings, stories } from "@/db/schema";
+import { isCitedDossier, isResearchedRecommendation } from "@/lib/research/display";
 import { autopilotAction, startResearchBriefAction } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -13,8 +14,10 @@ export default async function Home() {
   const beatRows = db ? await db.select().from(beats).where(eq(beats.active, true)).catch(() => []) : [];
   const cycleRows = db ? await db.select().from(researchCycles).orderBy(desc(researchCycles.createdAt)).limit(40).catch(() => []) : [];
   const candidateRows = db ? await db.select().from(candidateFunnelItems).orderBy(desc(candidateFunnelItems.createdAt)).limit(12).catch(() => []) : [];
-  const recommendations = db ? await db.select().from(editorialRecommendations).where(ne(editorialRecommendations.status, "dismissed")).orderBy(desc(editorialRecommendations.createdAt)).limit(10).catch(() => []) : [];
-  const dossierRows = db ? await db.select().from(stories).orderBy(desc(stories.createdAt)).limit(10).catch(() => []) : [];
+  const rawRecommendations = db ? await db.select().from(editorialRecommendations).where(ne(editorialRecommendations.status, "dismissed")).orderBy(desc(editorialRecommendations.createdAt)).limit(20).catch(() => []) : [];
+  const rawDossierRows = db ? await db.select().from(stories).orderBy(desc(stories.createdAt)).limit(20).catch(() => []) : [];
+  const recommendations = rawRecommendations.filter(isResearchedRecommendation).slice(0, 10);
+  const dossierRows = rawDossierRows.filter(isCitedDossier).slice(0, 10);
   const [autopilot] = db ? await db.select().from(researchSettings).where(eq(researchSettings.key, "autopilot")).limit(1).catch(() => []) : [];
   const autopilotEnabled = autopilot?.value.enabled !== false;
   const latestCycle = cycleRows[0];

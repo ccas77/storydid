@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { getDb } from "@/db";
 import { ensureResearchSchema } from "@/db/bootstrap";
 import { sources, stories } from "@/db/schema";
+import { isCitedDossier } from "@/lib/research/display";
 
 export const dynamic = "force-dynamic";
 
@@ -12,7 +13,7 @@ export default async function StoryPage({params}:{params:Promise<{id:string}>}) 
   const db = getDb();
   if (db) await ensureResearchSchema();
   const story = db ? (await db.select().from(stories).where(eq(stories.id,id)).limit(1).catch(() => []))[0] : undefined;
-  if(!story) notFound();
+  if(!story || !isCitedDossier(story)) notFound();
   const refs = db ? await db.select().from(sources).where(eq(sources.storyId,id)).catch(() => []) : [];
 
   return <main className="shell">
@@ -43,7 +44,7 @@ function ClaimCitations({ value, refs }: { value: unknown; refs: Array<{ archive
   if (!claims.length) return null;
   return <Section title="Claim-level citations">
     <ol>{claims.map((claim, index) => <li key={index}>{claim.claim} {claim.sourceIds.map((sourceId) => {
-      const ref = refs.find((item) => item.archiveIdentifier === sourceId);
+      const ref = refs.find((item) => item.archiveIdentifier === sourceId || item.archiveIdentifier === stripSourcePrefix(sourceId));
       return ref ? <a className="cite" key={sourceId} href={ref.url} target="_blank" rel="noreferrer">[{ref.title}]</a> : <span className="cite" key={sourceId}>[{sourceId}]</span>;
     })}</li>)}</ol>
   </Section>;
@@ -67,6 +68,10 @@ function field<T>(value: unknown, key: string, fallback?: T) {
 function arrayField(value: unknown, key: string) {
   const found = field<unknown[]>(value, key, []);
   return Array.isArray(found) ? found.filter((item): item is string => typeof item === "string") : [];
+}
+
+function stripSourcePrefix(sourceId: string) {
+  return sourceId.replace(/^(loc|internet_archive):/, "");
 }
 
 function Score({n,label}:{n:number;label:string}){return <div className="score"><b>{n}</b><span>{label}</span></div>}
