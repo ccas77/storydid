@@ -11,7 +11,7 @@ A runnable MVP that mines public historical archives, groups promising records i
 - Evidence-linked Postgres storage
 - Manual research button
 - Vercel daily cron endpoint
-- Demo mode when no database or API key is configured
+- Empty states when research has not produced real records yet
 
 ## Setup
 
@@ -26,13 +26,13 @@ Open `http://localhost:3000`.
 ## Environment variables
 
 - `OPENAI_API_KEY`: required for AI dossier generation
-- `DATABASE_URL`: Postgres connection string; without it the UI uses demo records
+- `DATABASE_URL`: Postgres connection string; without it the UI shows empty states
 - `CRON_SECRET`: protects `/api/cron/daily`
 - `RESEARCH_MODEL`: defaults to `gpt-5-mini`
 
 ## Deploying on Vercel
 
-Import the repository, configure the environment variables, run `npm run db:push` against the production database, and deploy. `vercel.json` runs the research endpoint every day at 08:00 UTC.
+Import the repository, configure the environment variables, run `npm run db:push` against the production database, and deploy. `vercel.json` runs the research scheduler every 15 minutes.
 
 ## Research safeguards
 

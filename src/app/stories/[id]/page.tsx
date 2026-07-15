@@ -4,7 +4,6 @@ import { notFound } from "next/navigation";
 import { getDb } from "@/db";
 import { ensureResearchSchema } from "@/db/bootstrap";
 import { sources, stories } from "@/db/schema";
-import { demoStories } from "@/lib/demo";
 
 export const dynamic = "force-dynamic";
 
@@ -12,7 +11,7 @@ export default async function StoryPage({params}:{params:Promise<{id:string}>}) 
   const { id } = await params;
   const db = getDb();
   if (db) await ensureResearchSchema();
-  const story = db ? (await db.select().from(stories).where(eq(stories.id,id)).limit(1).catch(() => []))[0] ?? demoStories.find(s=>s.id===id) : demoStories.find(s=>s.id===id);
+  const story = db ? (await db.select().from(stories).where(eq(stories.id,id)).limit(1).catch(() => []))[0] : undefined;
   if(!story) notFound();
   const refs = db ? await db.select().from(sources).where(eq(sources.storyId,id)).catch(() => []) : [];
 
@@ -34,7 +33,7 @@ export default async function StoryPage({params}:{params:Promise<{id:string}>}) 
       <Section title="Unresolved risks"><ul>{(arrayField(story, "unresolvedRisks").length ? arrayField(story, "unresolvedRisks") : story.conflicts)?.map((x,i)=><li key={i}>{x}</li>)}</ul></Section>
       <Section title="Video structure"><ol>{story.outline?.map((x,i)=><li key={i}><b>{x.heading}:</b> {x.notes}</li>)}</ol></Section>
       <Section title="Recommended next action"><p>{field(story, "recommendedNextAction", "Develop editorial treatment from the strongest cited claims.")}</p></Section>
-      <Section title="Sources">{refs.length ? <ul>{refs.map(r=><li key={r.id}><a href={r.url} target="_blank" rel="noreferrer">{r.title}</a>{r.publicationDate ? `, ${r.publicationDate}` : ""}</li>)}</ul> : <p>Sources will attach after the autonomous research agent saves evidence records.</p>}</Section>
+      <Section title="Sources">{refs.length ? <ul>{refs.map(r=><li key={r.id}><a href={r.url} target="_blank" rel="noreferrer">{r.title}</a>{r.publicationDate ? `, ${r.publicationDate}` : ""}</li>)}</ul> : <p>No cited sources were saved for this dossier.</p>}</Section>
     </article>
   </main>;
 }

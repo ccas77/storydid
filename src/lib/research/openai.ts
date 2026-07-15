@@ -1,7 +1,7 @@
 import OpenAI from "openai";
 import { z } from "zod";
 import type { ArchiveRecord, InvestigationPlan, ResearchDecisionSet, StoryDossier } from "@/lib/types";
-import { evidenceDepthScore, groupSourceIndependence, originalitySignals, researchQuestionsFor, shouldDowngradeInvestigation, type InvestigationInput } from "./investigation";
+import type { InvestigationInput } from "./investigation";
 
 const scoreSchema = z.object({
   narrativeTension: z.number().min(0).max(100),
@@ -151,7 +151,7 @@ const recommendationItemSchema = {
 
 export async function buildResearchDecisions(records: ArchiveRecord[]): Promise<ResearchDecisionSet> {
   const client = getOpenAI();
-  if (!client) return demoDecisions(records);
+  if (!client) return { rejected: [], merged: [], recommendations: [] };
 
   const compact = records.slice(0, 90).map(({ id, title, url, date, location, description, source }) => ({
     id,
@@ -251,7 +251,7 @@ export async function buildResearchDecisions(records: ArchiveRecord[]): Promise<
 
 export async function buildInvestigationPlans(candidates: InvestigationInput[]): Promise<InvestigationPlan[]> {
   const client = getOpenAI();
-  if (!client) return demoInvestigationPlans(candidates);
+  if (!client) return [];
 
   const response = await client.responses.create({
     model: process.env.RESEARCH_MODEL ?? "gpt-5-mini",
@@ -343,47 +343,4 @@ export async function buildDossiers(records: ArchiveRecord[]): Promise<StoryDoss
       outline: recommendation.dossier?.outline ?? [],
       sourceIds: recommendation.sourceIds,
     }));
-}
-
-function demoDecisions(records: ArchiveRecord[]): ResearchDecisionSet {
-  const sample = records.slice(0, 3);
-  return {
-    rejected: [],
-    merged: [],
-    recommendations: [{
-      clusterLabel: "Demo archive lead",
-      mergeKey: "demo-archive-lead",
-      workingTitle: sample[0]?.title ?? "The inheritance dispute that divided a town",
-      premise: "Demo recommendation generated because OPENAI_API_KEY is not configured.",
-      narrativeHook: "A promising archival lead is ready for deeper source-backed investigation.",
-      whyOverlooked: "The story is buried in metadata-level archive records and has not yet been developed for a popular audience.",
-      strongestEvidence: sample.map((record) => ({ claim: record.title, sourceIds: [record.id], note: record.description ?? "Archive metadata located." })),
-      originalityAssessment: "Likely under-covered until source clustering and title searches are completed.",
-      unresolvedRisks: ["Automated verification requires an OpenAI API key."],
-      confidence: 45,
-      researchCompleteness: 35,
-      recommendedNextAction: "Investigate further",
-      scores: { narrativeTension: 65, sourceStrength: Math.min(95, 35 + sample.length * 15), originality: 76, humanInterest: 72, historicalConsequence: 50, researchability: 58 },
-      sourceIds: sample.map((record) => record.id),
-      followUpQueries: sample[0] ? [sample[0].title] : [],
-      shouldCreateDossier: false,
-    }],
-  };
-}
-
-function demoInvestigationPlans(candidates: InvestigationInput[]): InvestigationPlan[] {
-  return candidates.map((candidate) => {
-    const downgradeReason = shouldDowngradeInvestigation(candidate);
-    return {
-      candidateExternalId: candidate.externalId,
-      workingTitle: candidate.title,
-      premise: candidate.hypothesis,
-      researchQuestions: researchQuestionsFor(candidate),
-      followUpQueries: [`"${candidate.title}" testimony`, `"${candidate.title}" newspaper`, `"${candidate.title}" archive`],
-      originalitySignals: originalitySignals(candidate),
-      evidenceDepth: Math.round(evidenceDepthScore(candidate)),
-      sourceIndependence: groupSourceIndependence(candidate.evidenceSourceIds),
-      ...(downgradeReason ? { downgradeReason } : {}),
-    };
-  });
 }
