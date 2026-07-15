@@ -11,6 +11,7 @@ import { buildCandidateFunnel, defaultStageBudget } from "./funnel";
 import { makeDailyQueries } from "./queries";
 import { buildInvestigationPlans, buildResearchDecisions } from "./openai";
 import { assessDossierReadiness } from "./readiness";
+import { prepareDossierDraft } from "./dossier";
 
 const DOSSIER_CONFIDENCE_THRESHOLD = 70;
 const DOSSIER_COMPLETENESS_THRESHOLD = 72;
@@ -155,7 +156,7 @@ async function runCandidateFunnelStage(cycle: CycleRow) {
         rejectionReason: decision.rejectionReason,
         duplicateOf: decision.duplicateOf,
         scores: decision.scores,
-        evidenceSourceIds: [decision.record.id],
+        evidenceSourceIds: [evidenceSourceId(decision.record)],
       };
     })).onConflictDoNothing({ target: [candidateFunnelItems.cycleId, candidateFunnelItems.externalId] }).catch(() => undefined);
   }
@@ -279,54 +280,34 @@ async function runDossierReadinessStage(cycle: CycleRow) {
       continue;
     }
 
-    const sourceIds = Array.from(new Set(readiness.claimEvidence.flatMap((claim) => claim.sourceIds)));
+    const narrativeHook = stringArray(investigation.researchQuestions)[0] ?? investigation.premise;
+    const whyOverlooked = "The story emerged from autonomous archive clustering and evidence-depth checks rather than a manual candidate inbox.";
+    const dossierDraft = prepareDossierDraft({
+      workingTitle: investigation.workingTitle,
+      premise: investigation.premise,
+      narrativeHook,
+      whyOverlooked,
+      originalitySignals: stringArray(investigation.originalitySignals),
+      followUpQueries: stringArray(investigation.followUpQueries),
+      evidenceDepth: investigation.evidenceDepth,
+      readiness,
+    });
+    if (!dossierDraft) {
+      downgraded += 1;
+      await logActivity(cycle, "downgraded", "Investigation failed dossier preparation", `${investigation.workingTitle}: claim-level citations were incomplete.`, { investigationId: investigation.id, readinessScore: readiness.score });
+      continue;
+    }
+    const sourceIds = dossierDraft.recommendation.sourceIds;
     const [story] = await db.insert(stories).values({
       beatId: cycle.beatId,
-      workingTitle: investigation.workingTitle,
-      category: "Autonomous research dossier",
-      summary: investigation.premise,
-      status: "ready",
-      interestScore: 70,
-      sourceScore: Math.min(100, investigation.evidenceDepth),
-      competitionScore: 70,
-      confidenceScore: readiness.score,
-      chronology: [],
-      keyFacts: readiness.claimEvidence.map((claim) => claim.claim),
-      conflicts: readiness.risks,
-      titles: [investigation.workingTitle],
-      outline: [
-        { heading: "Premise", notes: investigation.premise },
-        { heading: "Evidence", notes: "Develop from the cited archive claims and source groups." },
-        { heading: "Risks", notes: readiness.risks.length ? readiness.risks.join(" ") : "No blocking evidence risks at readiness gate." },
-      ],
-      premise: investigation.premise,
-      narrativeHook: stringArray(investigation.researchQuestions)[0] ?? investigation.premise,
-      whyOverlooked: "The story emerged from autonomous archive clustering and evidence-depth checks rather than a manual candidate inbox.",
-      originalityAssessment: stringArray(investigation.originalitySignals).join(" ") || "Originality requires editorial review, but the lead passed automated source-depth checks.",
-      unresolvedRisks: readiness.risks,
-      researchCompleteness: readiness.score,
-      recommendedNextAction: "Develop editorial treatment from the cited claims.",
-      claimCitations: readiness.claimEvidence.map(({ claim, sourceIds }) => ({ claim, sourceIds })),
+      ...dossierDraft.story,
     }).returning();
     await attachSourcesFromArchiveRecords(story.id, sourceIds);
     const [recommendation] = await db.insert(editorialRecommendations).values({
       cycleId: cycle.id,
       beatId: cycle.beatId,
       storyId: story.id,
-      status: "dossier_ready",
-      workingTitle: investigation.workingTitle,
-      premise: investigation.premise,
-      narrativeHook: stringArray(investigation.researchQuestions)[0] ?? investigation.premise,
-      whyOverlooked: "Autonomous archive research surfaced and validated this story from low-visibility records.",
-      strongestEvidence: readiness.claimEvidence,
-      originalityAssessment: stringArray(investigation.originalitySignals).join(" ") || "Passed automated originality and evidence-depth probes.",
-      unresolvedRisks: readiness.risks,
-      confidence: readiness.score,
-      researchCompleteness: readiness.score,
-      recommendedNextAction: "Develop",
-      scores: { narrativeTension: 70, sourceStrength: investigation.evidenceDepth, originality: 70, humanInterest: 70, historicalConsequence: 60, researchability: readiness.score },
-      sourceIds,
-      followUpQueries: stringArray(investigation.followUpQueries),
+      ...dossierDraft.recommendation,
     }).returning();
     await logActivity(cycle, "dossier", "Finished dossier generated", `${investigation.workingTitle} passed the readiness gate.`, { storyId: story.id, recommendationId: recommendation.id, readinessScore: readiness.score });
     dossiersCreated += 1;
@@ -506,7 +487,8 @@ async function persistSources(storyId: string, sourceIds: string[], records: Arc
 async function attachSourcesFromArchiveRecords(storyId: string, sourceIds: string[]) {
   const db = getDb();
   if (!db || !sourceIds.length) return;
-  const records = await db.select().from(archiveRecords).where(inArray(archiveRecords.externalId, sourceIds));
+  const lookupIds = Array.from(new Set(sourceIds.flatMap((sourceId) => [sourceId, stripSourcePrefix(sourceId)])));
+  const records = await db.select().from(archiveRecords).where(inArray(archiveRecords.externalId, lookupIds));
   if (!records.length) return;
   await db.insert(sources).values(records.map((record) => ({
     storyId,
@@ -518,6 +500,14 @@ async function attachSourcesFromArchiveRecords(storyId: string, sourceIds: strin
     excerpt: record.description,
     primarySource: true,
   }))).catch(() => undefined);
+}
+
+function evidenceSourceId(record: ArchiveRecord) {
+  return `${record.source}:${record.id}`;
+}
+
+function stripSourcePrefix(sourceId: string) {
+  return sourceId.replace(/^(loc|internet_archive):/, "");
 }
 
 function editorialScore(recommendation: EditorialRecommendation) {

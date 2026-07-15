@@ -143,6 +143,49 @@ a {
   color: var(--muted);
 }
 
+.brief-queue {
+  display: grid;
+  grid-template-columns: minmax(260px, .9fr) minmax(320px, 1.1fr);
+  gap: 24px;
+  margin: 0 0 34px;
+  padding: 22px;
+  background: var(--paper);
+  border: 1px solid var(--line);
+}
+
+.brief-queue h1 {
+  font-size: 32px;
+}
+
+.brief-queue p:last-child {
+  margin-bottom: 0;
+  color: var(--muted);
+}
+
+.brief-form {
+  display: grid;
+  gap: 10px;
+  align-self: stretch;
+}
+
+.brief-form textarea {
+  width: 100%;
+  min-height: 118px;
+  resize: vertical;
+  padding: 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  background: #fff;
+  color: var(--ink);
+  font: inherit;
+  line-height: 1.5;
+}
+
+.brief-form textarea:focus {
+  outline: 2px solid var(--accent-soft);
+  border-color: var(--accent);
+}
+
 .switch-form {
   flex: 0 0 auto;
 }
@@ -573,6 +616,7 @@ code {
   .top,
   .recommendation-top,
   .control-panel,
+  .brief-queue,
   .section-head {
     flex-direction: column;
     align-items: flex-start;
@@ -593,6 +637,7 @@ code {
   .status-strip,
   .stats,
   .grid,
+  .brief-queue,
   .beat-grid,
   .brief-grid,
   .scores,

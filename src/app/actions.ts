@@ -3,7 +3,9 @@
 import { revalidatePath } from "next/cache";
 import { eq, inArray } from "drizzle-orm";
 import { getDb } from "@/db";
-import { archiveRecords, editorialRecommendations, researchActivity, researchSettings, sources, stories } from "@/db/schema";
+import { ensureResearchSchema } from "@/db/bootstrap";
+import { archiveRecords, beats, editorialRecommendations, researchActivity, researchCycles, researchSettings, sources, stories } from "@/db/schema";
+import { makeBriefSeeds, slugFromBrief } from "@/lib/research/queries";
 
 export async function autopilotAction(formData: FormData) {
   const enabled = String(formData.get("enabled") ?? "") === "true";
@@ -23,6 +25,43 @@ export async function autopilotAction(formData: FormData) {
     title: enabled ? "Autopilot resumed" : "Autopilot paused",
     detail: enabled ? "Scheduled research cycles can advance again." : "Scheduled research cycles will not start while autopilot is paused.",
     metadata: { enabled },
+  }).catch(() => undefined);
+
+  revalidatePath("/");
+  revalidatePath("/activity");
+}
+
+export async function startResearchBriefAction(formData: FormData) {
+  const prompt = String(formData.get("prompt") ?? "").replace(/\s+/g, " ").trim();
+  const db = getDb();
+  if (!db || prompt.length < 12) return;
+
+  await ensureResearchSchema();
+  const seeds = makeBriefSeeds(prompt);
+  const baseSlug = slugFromBrief(prompt);
+  const slug = `brief-${baseSlug}-${Date.now().toString(36)}`;
+  const name = prompt.length > 72 ? `${prompt.slice(0, 69)}...` : prompt;
+  const [beat] = await db.insert(beats).values({
+    slug,
+    name,
+    description: `User research brief: ${prompt}`,
+    querySeeds: seeds,
+    cadenceWeight: 5,
+    active: true,
+  }).returning();
+  const [cycle] = await db.insert(researchCycles).values({
+    beatId: beat.id,
+    status: "queued",
+    currentStage: "discovery",
+    stageState: { source: "user_brief", prompt, querySeeds: seeds },
+  }).returning();
+  await db.insert(researchActivity).values({
+    cycleId: cycle.id,
+    beatId: beat.id,
+    kind: "brief_queued",
+    title: "Research brief queued",
+    detail: "The brief was saved as a beat and queued for the scheduler to advance one stage at a time.",
+    metadata: { prompt, seeds },
   }).catch(() => undefined);
 
   revalidatePath("/");

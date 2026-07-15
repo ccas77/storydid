@@ -3,7 +3,7 @@ import { desc, eq, ne } from "drizzle-orm";
 import { getDb } from "@/db";
 import { ensureResearchSchema } from "@/db/bootstrap";
 import { beats, candidateFunnelItems, editorialRecommendations, researchCycles, researchSettings, stories } from "@/db/schema";
-import { autopilotAction } from "./actions";
+import { autopilotAction, startResearchBriefAction } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -55,6 +55,18 @@ export default async function Home() {
       <Status title="Rejects" value="Duplicates, weak records, routine minutiae" />
       <Status title="Investigates" value="Evidence gaps and source independence" />
       <Status title="Stops" value="Downgrades leads that stay thin" />
+    </section>
+
+    <section className="brief-queue" aria-label="Queue a research brief">
+      <div>
+        <p className="eyebrow">Research brief</p>
+        <h1>Give the agent a direction</h1>
+        <p>The brief becomes a scheduled beat. Discovery, filtering, follow-up research, and dossier readiness still run as resumable background stages.</p>
+      </div>
+      <form action={startResearchBriefAction} className="brief-form">
+        <textarea name="prompt" minLength={12} required placeholder="Example: a suspicious charity scandal in New York newspapers between 1890 and 1925" />
+        <button className="primary" type="submit">Queue brief</button>
+      </form>
     </section>
 
     <section className="section-head">
