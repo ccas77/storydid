@@ -15,6 +15,7 @@ import { assessDossierReadiness } from "./readiness";
 import { prepareDossierDraft } from "./dossier";
 import { compareClaimableCycles } from "./cycle-claim";
 import { archiveLookupIds } from "./source-ids";
+import { isRelevantFollowUp } from "./follow-up";
 
 const DOSSIER_CONFIDENCE_THRESHOLD = 70;
 const DOSSIER_COMPLETENESS_THRESHOLD = 72;
@@ -388,22 +389,6 @@ async function discoverRecords(queries: string[], limit = 12) {
 
 function dedupeRecords(records: ArchiveRecord[]) {
   return Array.from(new Map(records.map((record) => [record.url, record])).values());
-}
-
-function isRelevantFollowUp(title: string, hypothesis: string, record: ArchiveRecord) {
-  const anchor = keywordSet(`${title} ${hypothesis}`);
-  const target = keywordSet(`${record.title} ${record.description ?? ""}`);
-  const overlap = [...anchor].filter((term) => target.has(term)).length;
-  return overlap >= 2 || (record.source === "internet_archive" && overlap >= 1);
-}
-
-function keywordSet(value: string) {
-  return new Set(value
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]+/g, " ")
-    .split(/\s+/)
-    .filter((term) => term.length > 4)
-    .filter((term) => !["image", "newspaper", "archive", "daily", "tribune", "record", "around"].includes(term)));
 }
 
 async function persistArchiveRecords({ cycle, runId, records }: { cycle: CycleRow; runId: string; records: ArchiveRecord[] }) {
