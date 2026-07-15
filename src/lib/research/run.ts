@@ -260,7 +260,7 @@ async function runDeepResearchStage(cycle: CycleRow) {
     return Boolean(shouldDowngradeInvestigation({ ...input, evidenceSourceIds }));
   }).length;
   const activeCount = plans.length - downgradedCount;
-  await persistStageBudget(cycle, "deep_research", budget, { usedRecords: active.length, usedSearches: queries.length, usedModelCalls: process.env.OPENAI_API_KEY && plans.length ? 1 : 0 });
+  await persistStageBudget(cycle, "deep_research", budget, { usedRecords: active.length, usedSearches: queries.length, usedModelCalls: process.env.RESEARCH_MODEL_PLANNER === "true" && process.env.OPENAI_API_KEY && plans.length ? 1 : 0 });
   await db.update(researchCycles).set({
     currentStage: "dossier_readiness",
     stageState: { investigationsCreated: plans.length, activeCount, downgradedCount },

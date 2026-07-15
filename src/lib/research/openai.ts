@@ -252,7 +252,7 @@ export async function buildResearchDecisions(records: ArchiveRecord[]): Promise<
 
 export async function buildInvestigationPlans(candidates: InvestigationInput[]): Promise<InvestigationPlan[]> {
   const client = getOpenAI();
-  if (!client) return buildDeterministicInvestigationPlans(candidates);
+  if (!client || process.env.RESEARCH_MODEL_PLANNER !== "true") return buildDeterministicInvestigationPlans(candidates);
 
   try {
     const response = await client.responses.create({
