@@ -6,10 +6,21 @@ export function isResearchedRecommendation(item: { confidence: number; researchC
   );
 }
 
-export function isCitedDossier(item: { confidenceScore: number; researchCompleteness: number; claimCitations: unknown; workingTitle?: string; summary?: string; premise?: string | null }) {
+export function isCitedDossier(item: {
+  confidenceScore: number;
+  researchCompleteness: number;
+  claimCitations: unknown;
+  workingTitle?: string;
+  summary?: string;
+  premise?: string | null;
+  keyFacts?: unknown;
+  chronology?: unknown;
+}) {
   return item.confidenceScore >= 45 &&
     item.researchCompleteness >= 45 &&
     citationCount(item.claimCitations) > 0 &&
+    substantiveClaimCount(item.claimCitations) >= 2 &&
+    hasDevelopedStoryMaterial(item) &&
     isStoryLike(item);
 }
 
@@ -35,6 +46,24 @@ function citationCount(value: unknown) {
   }).length : 0;
 }
 
+function substantiveClaimCount(value: unknown) {
+  return Array.isArray(value) ? value.filter((item) => {
+    if (!item || typeof item !== "object") return false;
+    const claim = (item as Record<string, unknown>).claim;
+    return typeof claim === "string" && isSubstantiveClaim(claim);
+  }).length : 0;
+}
+
+function hasDevelopedStoryMaterial(item: { keyFacts?: unknown; chronology?: unknown }) {
+  const keyFacts = Array.isArray(item.keyFacts) ? item.keyFacts.filter((fact) => typeof fact === "string" && isSubstantiveClaim(fact)) : [];
+  const chronology = Array.isArray(item.chronology) ? item.chronology.filter((entry) => {
+    if (!entry || typeof entry !== "object") return false;
+    const event = (entry as Record<string, unknown>).event;
+    return typeof event === "string" && isSubstantiveClaim(event);
+  }) : [];
+  return keyFacts.length >= 3 || chronology.length >= 2;
+}
+
 function isStoryLike(item: { workingTitle?: string; summary?: string; premise?: string | null }) {
   const text = `${item.workingTitle ?? ""} ${item.summary ?? ""} ${item.premise ?? ""}`.toLowerCase();
   if (!text.trim()) return false;
@@ -53,7 +82,16 @@ function normalizeStoryKey(value: string) {
     .trim();
 }
 
+function isSubstantiveClaim(value: string) {
+  const text = value.toLowerCase().replace(/\s+/g, " ").trim();
+  if (text.length < 55) return false;
+  if (genericClaimPattern.test(text)) return false;
+  if (/^the .+ around \d{4}/.test(text)) return false;
+  return narrativeCuePattern.test(text);
+}
+
 const archiveContainerPattern = /\b(cia reading room|pages? georgia pages?|anthology|literatures of|jprs id|arrangements for address|retirement dinner|daily press \d{4}|telegraph \d{4}|mail \d{4}|degrees north)\b/;
 const routineInstitutionPattern = /\b(minutes?|annual report|directory|bibliography|address commemorative|memoir|novel|anthology)\b/;
 const dateOnlyTitlePattern = /^\d{4}\s+[a-z]+\s+\d{1,2}\s+/i;
 const narrativeCuePattern = /\b(disaster|scandal|strike|betrayal|trial|inquest|murder|mystery|explosion|collapse|fire|riot|fraud|impostor|survivor|testimony|mine|shipwreck|sinking|missing|cover.?up|corruption|accident|death|conflict|fight|war|warning|failure)\b/;
+const genericClaimPattern = /\b(sufficient source depth|editorial development|passed automated|readiness gate|story lead storydid found|originality requires editorial review)\b/;
