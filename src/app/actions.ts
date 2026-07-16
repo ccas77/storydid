@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { eq, inArray } from "drizzle-orm";
 import { getDb } from "@/db";
 import { ensureResearchSchema } from "@/db/bootstrap";
@@ -10,10 +11,10 @@ import { makeBriefSeeds, slugFromBrief } from "@/lib/research/queries";
 import { archiveLookupIds } from "@/lib/research/source-ids";
 
 export async function autopilotAction(formData: FormData) {
-  if (!isAuthorizedAction(formData)) return;
+  if (!isAuthorizedAction(formData)) redirect("/?notice=bad-code");
   const enabled = String(formData.get("enabled") ?? "") === "true";
   const db = getDb();
-  if (!db) return;
+  if (!db) redirect("/?notice=missing-db");
 
   await db.insert(researchSettings).values({
     key: "autopilot",
@@ -32,13 +33,15 @@ export async function autopilotAction(formData: FormData) {
 
   revalidatePath("/");
   revalidatePath("/activity");
+  redirect(`/?notice=${enabled ? "autopilot-on" : "autopilot-off"}`);
 }
 
 export async function startResearchBriefAction(formData: FormData) {
-  if (!isAuthorizedAction(formData)) return;
+  if (!isAuthorizedAction(formData)) redirect("/?notice=bad-code");
   const prompt = String(formData.get("prompt") ?? "").replace(/\s+/g, " ").trim();
   const db = getDb();
-  if (!db || prompt.length < 12) return;
+  if (!db) redirect("/?notice=missing-db");
+  if (prompt.length < 12) redirect("/?notice=brief-too-short");
 
   await ensureResearchSchema();
   const seeds = makeBriefSeeds(prompt);
@@ -70,17 +73,19 @@ export async function startResearchBriefAction(formData: FormData) {
 
   revalidatePath("/");
   revalidatePath("/activity");
+  redirect(`/?notice=brief-queued&beat=${encodeURIComponent(slug)}`);
 }
 
 export async function recommendationAction(formData: FormData) {
-  if (!isAuthorizedAction(formData)) return;
+  if (!isAuthorizedAction(formData)) redirect("/?notice=bad-code");
   const id = String(formData.get("id") ?? "");
   const action = String(formData.get("action") ?? "");
   const db = getDb();
-  if (!db || !id) return;
+  if (!db) redirect("/?notice=missing-db");
+  if (!id) redirect("/?notice=missing-recommendation");
 
   const [recommendation] = await db.select().from(editorialRecommendations).where(eq(editorialRecommendations.id, id)).limit(1);
-  if (!recommendation) return;
+  if (!recommendation) redirect("/?notice=missing-recommendation");
 
   if (action === "dismiss") {
     await db.update(editorialRecommendations).set({ status: "dismissed", updatedAt: new Date() }).where(eq(editorialRecommendations.id, id));
@@ -131,6 +136,7 @@ export async function recommendationAction(formData: FormData) {
 
   revalidatePath("/");
   revalidatePath("/activity");
+  redirect(`/?notice=action-saved&action=${encodeURIComponent(action)}`);
 }
 
 async function attachSources(storyId: string, sourceIds: string[]) {

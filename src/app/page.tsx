@@ -9,7 +9,13 @@ import { autopilotAction, recommendationAction, startResearchBriefAction } from 
 
 export const dynamic = "force-dynamic";
 
-export default async function Home() {
+type HomeProps = {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+};
+
+export default async function Home({ searchParams }: HomeProps) {
+  const params = await searchParams;
+  const notice = noticeFromParams(params ?? {});
   const db = getDb();
   if (db) await ensureResearchSchema();
   const beatRows = db ? await db.select().from(beats).where(eq(beats.active, true)).catch(() => []) : [];
@@ -40,6 +46,15 @@ export default async function Home() {
       <Step label="Controlled research" value="investigations" />
       <Step label="Editorial approval" value="dossiers and actions" />
     </section>
+
+    {notice ? <section className={`notice ${notice.tone}`} role="status" aria-live="polite">
+      <div>
+        <p className="eyebrow">{notice.eyebrow}</p>
+        <h1>{notice.title}</h1>
+        <p>{notice.detail}</p>
+      </div>
+      {notice.href ? <Link className="secondary" href={notice.href}>{notice.cta}</Link> : null}
+    </section> : null}
 
     <section className="control-panel" aria-label="Research controls">
       <div>
@@ -179,4 +194,82 @@ function RecommendationActions({ id, needsAccessCode, controlsReady }: { id: str
       <button className={className} type="submit" disabled={!controlsReady}>{label}</button>
     </form>)}
   </div>;
+}
+
+function noticeFromParams(params: Record<string, string | string[] | undefined>) {
+  const notice = valueParam(params.notice);
+  const beat = valueParam(params.beat);
+  const action = valueParam(params.action);
+  if (notice === "brief-queued") {
+    return {
+      tone: "success",
+      eyebrow: "Brief queued",
+      title: "The research brief is in the scheduler.",
+      detail: "The agent will advance it through discovery, filtering, follow-up research, and dossier readiness as separate resumable stages.",
+      href: beat ? `/beats/${beat}` : undefined,
+      cta: "Open beat",
+    };
+  }
+  if (notice === "bad-code") {
+    return {
+      tone: "error",
+      eyebrow: "Action blocked",
+      title: "That owner access code did not match.",
+      detail: "Use the current RESEARCH_ACCESS_CODE from Vercel, or rotate it and redeploy before trying again.",
+    };
+  }
+  if (notice === "missing-db") {
+    return {
+      tone: "error",
+      eyebrow: "Configuration missing",
+      title: "The database URL is not available to the app.",
+      detail: "Set DATABASE_URL in the Vercel production environment, then redeploy.",
+    };
+  }
+  if (notice === "brief-too-short") {
+    return {
+      tone: "error",
+      eyebrow: "Brief not queued",
+      title: "The research brief needs a little more detail.",
+      detail: "Use at least 12 characters so the agent has enough direction to seed archive searches.",
+    };
+  }
+  if (notice === "autopilot-on" || notice === "autopilot-off") {
+    return {
+      tone: "success",
+      eyebrow: "Autopilot updated",
+      title: notice === "autopilot-on" ? "Research is running." : "Research is paused.",
+      detail: notice === "autopilot-on" ? "Scheduled cycles can advance again." : "Scheduled cycles will wait until autopilot is resumed.",
+    };
+  }
+  if (notice === "action-saved") {
+    return {
+      tone: "success",
+      eyebrow: "Editorial action saved",
+      title: `${actionLabel(action)} recorded.`,
+      detail: "The activity view now includes this editorial decision.",
+      href: "/activity",
+      cta: "Open activity",
+    };
+  }
+  if (notice === "missing-recommendation") {
+    return {
+      tone: "error",
+      eyebrow: "Action blocked",
+      title: "That recommendation could not be found.",
+      detail: "Refresh the page and try again from a visible recommendation.",
+    };
+  }
+  return undefined;
+}
+
+function valueParam(value: string | string[] | undefined) {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+function actionLabel(action?: string) {
+  if (action === "improve-angle") return "Improve angle";
+  if (action === "investigate-further") return "Investigate further";
+  if (action === "dismiss") return "Dismiss";
+  return "Develop";
 }
