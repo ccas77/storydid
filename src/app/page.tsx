@@ -1,10 +1,10 @@
 import Link from "next/link";
-import { desc, ne } from "drizzle-orm";
+import { desc } from "drizzle-orm";
 import { getDb } from "@/db";
 import { ensureResearchSchema } from "@/db/bootstrap";
-import { editorialRecommendations, researchCycles, stories } from "@/db/schema";
-import { isCitedDossier, isResearchedRecommendation } from "@/lib/research/display";
-import { recommendationAction, startResearchBriefAction } from "./actions";
+import { stories } from "@/db/schema";
+import { isCitedDossier, uniqueEditorialStories } from "@/lib/research/display";
+import { startResearchBriefAction } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -17,18 +17,14 @@ export default async function Home({ searchParams }: HomeProps) {
   const notice = noticeFromParams(params ?? {});
   const db = getDb();
   if (db) await ensureResearchSchema();
-  const cycleRows = db ? await db.select().from(researchCycles).orderBy(desc(researchCycles.createdAt)).limit(40).catch(() => []) : [];
-  const rawRecommendations = db ? await db.select().from(editorialRecommendations).where(ne(editorialRecommendations.status, "dismissed")).orderBy(desc(editorialRecommendations.createdAt)).limit(20).catch(() => []) : [];
-  const rawDossierRows = db ? await db.select().from(stories).orderBy(desc(stories.createdAt)).limit(20).catch(() => []) : [];
-  const recommendations = rawRecommendations.filter(isResearchedRecommendation).slice(0, 10);
-  const dossierRows = rawDossierRows.filter(isCitedDossier).slice(0, 10);
-  const successfulCycles = cycleRows.filter((cycle) => cycle.status === "completed").length;
+  const rawDossierRows = db ? await db.select().from(stories).orderBy(desc(stories.createdAt)).limit(50).catch(() => []) : [];
+  const storyRows = uniqueEditorialStories(rawDossierRows.filter(isCitedDossier)).slice(0, 6);
 
   return <main className="shell">
     <header className="top">
       <div>
         <div className="brand">StoryDid</div>
-        <div className="sub">Submit a research brief. StoryDid brings back successful dossiers and recommendations when the evidence is strong enough.</div>
+        <div className="sub">Submit a research brief. StoryDid brings back researched stories when there is enough evidence to read.</div>
       </div>
       <nav className="nav"><Link href="/activity">Activity</Link></nav>
     </header>
@@ -46,7 +42,7 @@ export default async function Home({ searchParams }: HomeProps) {
       <div>
         <p className="eyebrow">Research brief</p>
         <h1>What should StoryDid investigate?</h1>
-        <p>Give it a focused direction. The app will only surface successful recommendations or finished dossiers here.</p>
+        <p>Give it a focused direction. The page only shows stories that pass the editorial display gate.</p>
       </div>
       <form action={startResearchBriefAction} className="brief-form">
         <textarea name="prompt" minLength={12} required placeholder="Example: labor strike betrayal in Pennsylvania newspapers 1890 1935" />
@@ -54,70 +50,22 @@ export default async function Home({ searchParams }: HomeProps) {
       </form>
     </section>
 
-    <section className="success-strip" aria-label="Successful output totals">
-      <SuccessStat n={dossierRows.length} label="finished dossiers" />
-      <SuccessStat n={recommendations.length} label="successful recommendations" />
-      <SuccessStat n={successfulCycles} label="completed research runs" />
-    </section>
-
     <section className="section-head">
       <div>
-        <p className="eyebrow">Successes</p>
-        <h1>Finished dossiers</h1>
+        <p className="eyebrow">Ready to read</p>
+        <h1>Stories</h1>
       </div>
-      <span className="count">{dossierRows.length} ready</span>
+      <span className="count">{storyRows.length} ready</span>
     </section>
 
     <section className="grid">
-      {dossierRows.length ? dossierRows.map((story) => <Link className="card success-card" href={`/stories/${story.id}`} key={story.id}>
-        <div className="meta"><span className="pill">dossier</span><span className="pill">{story.confidenceScore}% confidence</span></div>
+      {storyRows.length ? storyRows.map((story) => <Link className="card success-card story-card" href={`/stories/${story.id}`} key={story.id}>
         <h2>{story.workingTitle}</h2>
         <p>{story.summary}</p>
         <span className="secondary inline-link">Read story</span>
-      </Link>) : <div className="empty"><h2>No finished dossiers yet</h2><p>Submit a brief. Successful reports will appear here when the evidence clears the readiness gate.</p></div>}
-    </section>
-
-    <section className="section-head">
-      <div>
-        <p className="eyebrow">Shortlist</p>
-        <h1>Successful recommendations</h1>
-      </div>
-      <span className="count">{recommendations.length} visible</span>
-    </section>
-
-    <section className="recommendations compact">
-      {recommendations.length ? recommendations.map((recommendation) => <article className="recommendation success-card" key={recommendation.id}>
-        <div className="recommendation-top">
-          <div>
-            <div className="meta"><span className="pill">{recommendation.status.replaceAll("_", " ")}</span><span className="pill">{recommendation.confidence}% confidence</span><span className="pill">{recommendation.researchCompleteness}% complete</span></div>
-            <h2>{recommendation.workingTitle}</h2>
-            <p>{recommendation.premise}</p>
-          </div>
-          {recommendation.storyId ? <Link className="secondary" href={`/stories/${recommendation.storyId}`}>Read story</Link> : null}
-        </div>
-        <RecommendationActions id={recommendation.id} />
-      </article>) : <div className="empty"><h2>No recommendations ready yet</h2><p>StoryDid will show recommendations here only when the evidence is strong enough to consider.</p></div>}
+      </Link>) : <div className="empty"><h2>No stories ready yet</h2><p>Submit a brief. StoryDid will keep the research machinery out of sight until there is a real story to read.</p></div>}
     </section>
   </main>;
-}
-
-function SuccessStat({ n, label }: { n: number; label: string }) {
-  return <div className="success-stat"><b>{n}</b><span>{label}</span></div>;
-}
-
-function RecommendationActions({ id }: { id: string }) {
-  return <div className="actions">
-    {[
-      ["develop", "Develop", "primary"],
-      ["improve-angle", "Improve angle", "secondary"],
-      ["investigate-further", "Investigate further", "secondary"],
-      ["dismiss", "Dismiss", "ghost"],
-    ].map(([action, label, className]) => <form action={recommendationAction} key={action}>
-      <input type="hidden" name="id" value={id} />
-      <input type="hidden" name="action" value={action} />
-      <button className={className} type="submit">{label}</button>
-    </form>)}
-  </div>;
 }
 
 function noticeFromParams(params: Record<string, string | string[] | undefined>) {

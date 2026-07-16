@@ -6,10 +6,21 @@ export function isResearchedRecommendation(item: { confidence: number; researchC
   );
 }
 
-export function isCitedDossier(item: { confidenceScore: number; researchCompleteness: number; claimCitations: unknown }) {
+export function isCitedDossier(item: { confidenceScore: number; researchCompleteness: number; claimCitations: unknown; workingTitle?: string; summary?: string; premise?: string | null }) {
   return item.confidenceScore >= 45 &&
     item.researchCompleteness >= 45 &&
-    citationCount(item.claimCitations) > 0;
+    citationCount(item.claimCitations) > 0 &&
+    isStoryLike(item);
+}
+
+export function uniqueEditorialStories<T extends { workingTitle: string; summary: string }>(items: T[]) {
+  const seen = new Set<string>();
+  return items.filter((item) => {
+    const key = normalizeStoryKey(item.workingTitle || item.summary);
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 function evidenceCount(value: unknown) {
@@ -23,3 +34,26 @@ function citationCount(value: unknown) {
     return typeof (item as Record<string, unknown>).claim === "string" && Array.isArray(sourceIds) && sourceIds.length > 0;
   }).length : 0;
 }
+
+function isStoryLike(item: { workingTitle?: string; summary?: string; premise?: string | null }) {
+  const text = `${item.workingTitle ?? ""} ${item.summary ?? ""} ${item.premise ?? ""}`.toLowerCase();
+  if (!text.trim()) return false;
+  if (archiveContainerPattern.test(text)) return false;
+  if (routineInstitutionPattern.test(text)) return false;
+  if (dateOnlyTitlePattern.test(item.workingTitle ?? "")) return false;
+  return narrativeCuePattern.test(text);
+}
+
+function normalizeStoryKey(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\b(the|a|an|story|dossier)\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+const archiveContainerPattern = /\b(cia reading room|pages? georgia pages?|anthology|literatures of|jprs id|arrangements for address|retirement dinner|daily press \d{4}|telegraph \d{4}|mail \d{4}|degrees north)\b/;
+const routineInstitutionPattern = /\b(minutes?|annual report|directory|bibliography|address commemorative|memoir|novel|anthology)\b/;
+const dateOnlyTitlePattern = /^\d{4}\s+[a-z]+\s+\d{1,2}\s+/i;
+const narrativeCuePattern = /\b(disaster|scandal|strike|betrayal|trial|inquest|murder|mystery|explosion|collapse|fire|riot|fraud|impostor|survivor|testimony|mine|shipwreck|sinking|missing|cover.?up|corruption|accident|death|conflict|fight|war|warning|failure)\b/;
