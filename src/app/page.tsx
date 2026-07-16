@@ -18,13 +18,13 @@ export default async function Home({ searchParams }: HomeProps) {
   const db = getDb();
   if (db) await ensureResearchSchema();
   const rawDossierRows = db ? await db.select().from(stories).orderBy(desc(stories.createdAt)).limit(50).catch(() => []) : [];
-  const storyRows = uniqueEditorialStories(rawDossierRows.filter(isCitedDossier)).slice(0, 6);
+  const completedStory = uniqueEditorialStories(rawDossierRows.filter(isCitedDossier))[0];
 
   return <main className="shell">
     <header className="top">
       <div>
         <div className="brand">StoryDid</div>
-        <div className="sub">Submit a research brief. StoryDid brings back researched stories when there is enough evidence to read.</div>
+        <div className="sub">Submit a research brief. Read the completed story when one is ready.</div>
       </div>
       <nav className="nav"><Link href="/activity">Activity</Link></nav>
     </header>
@@ -42,7 +42,7 @@ export default async function Home({ searchParams }: HomeProps) {
       <div>
         <p className="eyebrow">Research brief</p>
         <h1>What should StoryDid investigate?</h1>
-        <p>Give it a focused direction. The page only shows stories that pass the editorial display gate.</p>
+        <p>Give it a focused direction. Everything operational stays off this page.</p>
       </div>
       <form action={startResearchBriefAction} className="brief-form">
         <textarea name="prompt" minLength={12} required placeholder="Example: labor strike betrayal in Pennsylvania newspapers 1890 1935" />
@@ -50,20 +50,9 @@ export default async function Home({ searchParams }: HomeProps) {
       </form>
     </section>
 
-    <section className="section-head">
-      <div>
-        <p className="eyebrow">Ready to read</p>
-        <h1>Stories</h1>
-      </div>
-      <span className="count">{storyRows.length} ready</span>
-    </section>
-
-    <section className="grid">
-      {storyRows.length ? storyRows.map((story) => <Link className="card success-card story-card" href={`/stories/${story.id}`} key={story.id}>
-        <h2>{story.workingTitle}</h2>
-        <p>{story.summary}</p>
-        <span className="secondary inline-link">Read story</span>
-      </Link>) : <div className="empty"><h2>No stories ready yet</h2><p>Submit a brief. StoryDid will keep the research machinery out of sight until there is a real story to read.</p></div>}
+    <section className="single-result" aria-label="Completed story">
+      {completedStory ? <Link className="primary result-link" href={`/stories/${completedStory.id}`}>Read completed story</Link> : <p>No completed story yet.</p>}
+      <Link className="secondary result-link" href="/activity">Research activity</Link>
     </section>
   </main>;
 }
