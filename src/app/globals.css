@@ -193,6 +193,11 @@ a {
   border: 1px solid var(--line);
 }
 
+.primary-brief {
+  margin-bottom: 18px;
+  border-color: var(--line-strong);
+}
+
 .brief-queue h1 {
   font-size: 32px;
 }
@@ -327,6 +332,42 @@ button:disabled {
   line-height: 1.45;
 }
 
+.success-strip {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0;
+  margin: 0 0 34px;
+  border: 1px solid var(--line);
+  background: var(--paper);
+}
+
+.success-stat {
+  min-height: 100px;
+  padding: 20px;
+  border-right: 1px solid var(--line);
+}
+
+.success-stat:last-child {
+  border-right: 0;
+}
+
+.success-stat b {
+  display: block;
+  font-family: var(--font-serif);
+  font-size: 38px;
+  line-height: 1;
+}
+
+.success-stat span {
+  display: block;
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+}
+
 .section-head {
   display: flex;
   justify-content: space-between;
@@ -408,6 +449,14 @@ p {
 .empty,
 .stat {
   padding: 20px;
+}
+
+.success-card {
+  border-color: var(--line-strong);
+}
+
+.success-card h2 {
+  max-width: 760px;
 }
 
 .beat-card,
@@ -592,6 +641,10 @@ li {
   color: var(--ink);
 }
 
+.inline-link {
+  margin-top: 8px;
+}
+
 .ghost {
   border: 1px solid var(--line);
   background: transparent;
@@ -708,6 +761,7 @@ code {
 @media (max-width: 900px) {
   .workflow,
   .status-strip,
+  .success-strip,
   .brief-grid,
   .grid {
     grid-template-columns: 1fr 1fr;
@@ -749,6 +803,7 @@ code {
 
   .workflow,
   .status-strip,
+  .success-strip,
   .stats,
   .grid,
   .brief-queue,
@@ -757,6 +812,15 @@ code {
   .scores,
   .score-strip {
     grid-template-columns: 1fr;
+  }
+
+  .success-stat {
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .success-stat:last-child {
+    border-bottom: 0;
   }
 
   .step {

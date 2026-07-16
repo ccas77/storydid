@@ -27,8 +27,8 @@ export async function autopilotAction(formData: FormData) {
   });
   await db.insert(researchActivity).values({
     kind: "control",
-    title: enabled ? "Autopilot resumed" : "Autopilot paused",
-    detail: enabled ? "Scheduled research cycles can advance again." : "Scheduled research cycles will not start while autopilot is paused.",
+    title: enabled ? "Research scheduler resumed" : "Research scheduler paused",
+    detail: enabled ? "Scheduled research cycles can advance again." : "Scheduled research cycles will not start while the scheduler is paused.",
     metadata: { enabled },
   }).catch(() => undefined);
 
