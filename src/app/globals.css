@@ -81,6 +81,14 @@ a {
   color: var(--accent);
 }
 
+.detail-nav {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  max-width: 900px;
+  margin: 0 auto;
+}
+
 .workflow {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -599,6 +607,58 @@ li {
 .detail h1 {
   font-size: 48px;
   margin-bottom: 14px;
+}
+
+.dossier-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 22px 0 4px;
+}
+
+.evidence-panel {
+  display: grid;
+  grid-template-columns: minmax(220px, .75fr) minmax(300px, 1.25fr);
+  gap: 18px;
+  margin-top: 24px;
+  padding: 20px;
+  border: 2px solid var(--line-strong);
+  background: #f8f4ed;
+}
+
+.evidence-panel h2 {
+  margin: 5px 0 8px;
+  font-size: 26px;
+}
+
+.evidence-panel p {
+  margin: 0;
+}
+
+.source-buttons {
+  display: grid;
+  gap: 8px;
+}
+
+.source-button {
+  display: grid;
+  justify-content: stretch;
+  min-height: 0;
+  text-align: left;
+}
+
+.source-button span,
+.source-button small {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.source-button b {
+  margin-top: 3px;
+  font-size: 13px;
+  line-height: 1.35;
 }
 
 .event {
