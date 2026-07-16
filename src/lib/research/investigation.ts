@@ -44,6 +44,6 @@ export function shouldDowngradeInvestigation(input: InvestigationInput) {
   const depth = evidenceDepthScore(input);
   const narrativeSignal = input.scores.narrativeSignal ?? 0;
   if (depth < 35) return "Evidence depth is too thin for controlled investigation.";
-  if (narrativeSignal < 35) return "Narrative signal remains too weak after funnel scoring.";
+  if (narrativeSignal < 30) return "Narrative signal remains too weak after funnel scoring.";
   return undefined;
 }

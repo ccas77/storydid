@@ -36,6 +36,18 @@ test("shouldDowngradeInvestigation downgrades weak evidence", () => {
   assert.match(reason ?? "", /Evidence depth/);
 });
 
+test("shouldDowngradeInvestigation allows sourced disaster leads", () => {
+  const reason = shouldDowngradeInvestigation({
+    externalId: "mather",
+    title: "The Mather mine disaster",
+    hypothesis: "The Mather mine disaster in Mather, Pennsylvania around 1928",
+    evidenceSourceIds: ["loc:91149767", "internet_archive:MCU_1928052401", "internet_archive:chinamail19280523"],
+    scores: { narrativeSignal: 30, sourceSignal: 90, specificity: 100 },
+  });
+
+  assert.equal(reason, undefined);
+});
+
 test("researchQuestionsFor creates controlled investigation questions", () => {
   const questions = researchQuestionsFor(strongCandidate);
 
