@@ -73,7 +73,7 @@ export default async function Home({ searchParams }: HomeProps) {
         <div className="meta"><span className="pill">dossier</span><span className="pill">{story.confidenceScore}% confidence</span></div>
         <h2>{story.workingTitle}</h2>
         <p>{story.summary}</p>
-        <span className="secondary inline-link">Open report</span>
+        <span className="secondary inline-link">Read story</span>
       </Link>) : <div className="empty"><h2>No finished dossiers yet</h2><p>Submit a brief. Successful reports will appear here when the evidence clears the readiness gate.</p></div>}
     </section>
 
@@ -93,7 +93,7 @@ export default async function Home({ searchParams }: HomeProps) {
             <h2>{recommendation.workingTitle}</h2>
             <p>{recommendation.premise}</p>
           </div>
-          {recommendation.storyId ? <Link className="secondary" href={`/stories/${recommendation.storyId}`}>Open dossier</Link> : null}
+          {recommendation.storyId ? <Link className="secondary" href={`/stories/${recommendation.storyId}`}>Read story</Link> : null}
         </div>
         <RecommendationActions id={recommendation.id} />
       </article>) : <div className="empty"><h2>No recommendations ready yet</h2><p>StoryDid will show recommendations here only when the evidence is strong enough to consider.</p></div>}

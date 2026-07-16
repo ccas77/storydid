@@ -44,13 +44,13 @@ export default async function BeatPage({ params }: { params: Promise<{ id: strin
         <div className="meta"><span className="pill">dossier</span><span className="pill">{story.confidenceScore}% confidence</span></div>
         <h2>{story.workingTitle}</h2>
         <p>{story.summary}</p>
-        <span className="secondary inline-link">Open report</span>
+        <span className="secondary inline-link">Read story</span>
       </Link>)}
       {recommendations.map((recommendation) => <article className="card success-card" key={recommendation.id}>
         <div className="meta"><span className="pill">{recommendation.status.replaceAll("_", " ")}</span><span className="pill">{recommendation.confidence}% confidence</span></div>
         <h2>{recommendation.workingTitle}</h2>
         <p>{recommendation.premise}</p>
-        {recommendation.storyId ? <Link className="secondary" href={`/stories/${recommendation.storyId}`}>Open dossier</Link> : null}
+        {recommendation.storyId ? <Link className="secondary" href={`/stories/${recommendation.storyId}`}>Read story</Link> : null}
         <RecommendationActions id={recommendation.id} />
       </article>)}
       {!dossiers.length && !recommendations.length ? <div className="empty"><h2>No successes yet</h2><p>Nothing from this brief has passed the evidence gate yet. Details are available in Activity.</p><Link className="secondary" href="/activity">Open activity</Link></div> : null}

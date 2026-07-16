@@ -5,6 +5,7 @@ import { getDb } from "@/db";
 import { ensureResearchSchema } from "@/db/bootstrap";
 import { sources, stories } from "@/db/schema";
 import { isCitedDossier } from "@/lib/research/display";
+import { buildStoryNarrative } from "@/lib/research/story-narrative";
 
 export const dynamic = "force-dynamic";
 
@@ -16,6 +17,18 @@ export default async function StoryPage({params}:{params:Promise<{id:string}>}) 
   if(!story || !isCitedDossier(story)) notFound();
   const refs = db ? await db.select().from(sources).where(eq(sources.storyId,id)).catch(() => []) : [];
   const beatHref = story.beatId ? `/?highlight=${story.beatId}` : "/";
+  const narrative = buildStoryNarrative({
+    workingTitle: story.workingTitle,
+    summary: story.summary,
+    premise: field(story, "premise"),
+    narrativeHook: field(story, "narrativeHook"),
+    whyOverlooked: field(story, "whyOverlooked"),
+    originalityAssessment: field(story, "originalityAssessment"),
+    keyFacts: story.keyFacts,
+    unresolvedRisks: arrayField(story, "unresolvedRisks"),
+    conflicts: story.conflicts,
+    claimCitations: story.claimCitations,
+  });
 
   return <main className="shell">
     <div className="detail-nav">
@@ -27,13 +40,14 @@ export default async function StoryPage({params}:{params:Promise<{id:string}>}) 
       <h1>{story.workingTitle}</h1>
       <p className="lede">{story.summary}</p>
       <div className="dossier-actions">
-        <a className="primary" href="#sources">Open source links</a>
-        <a className="secondary" href="#claims">Check claim citations</a>
+        <a className="primary" href="#story">Read the story</a>
+        <a className="secondary" href="#claims">Check citations</a>
+        <a className="secondary" href="#sources">Source links</a>
         <Link className="secondary" href={beatHref}>Back to recommendations</Link>
       </div>
       <div className="scores"><Score n={story.interestScore} label="human interest"/><Score n={story.sourceScore} label="sources"/><Score n={story.competitionScore} label="originality"/><Score n={story.confidenceScore} label="confidence"/></div>
 
-      <EvidencePanel refs={refs} />
+      <StorySection paragraphs={narrative} />
       {field(story, "premise") ? <Section title="Premise"><p>{field(story, "premise")}</p></Section> : null}
       {field(story, "narrativeHook") ? <Section title="Narrative hook"><p>{field(story, "narrativeHook")}</p></Section> : null}
       {field(story, "whyOverlooked") ? <Section title="Why it is overlooked"><p>{field(story, "whyOverlooked")}</p></Section> : null}
@@ -44,18 +58,26 @@ export default async function StoryPage({params}:{params:Promise<{id:string}>}) 
       <Section title="Unresolved risks"><ul>{(arrayField(story, "unresolvedRisks").length ? arrayField(story, "unresolvedRisks") : story.conflicts)?.map((x,i)=><li key={i}>{x}</li>)}</ul></Section>
       <Section title="Video structure"><ol>{story.outline?.map((x,i)=><li key={i}><b>{x.heading}:</b> {x.notes}</li>)}</ol></Section>
       <Section title="Recommended next action"><p>{field(story, "recommendedNextAction", "Develop editorial treatment from the strongest cited claims.")}</p></Section>
+      <EvidencePanel refs={refs} />
       <Section title="Sources" id="sources">{refs.length ? <ul>{refs.map(r=><li key={r.id}><a href={r.url} target="_blank" rel="noreferrer">{r.title}</a>{r.publicationDate ? `, ${r.publicationDate}` : ""}</li>)}</ul> : <p>No cited sources were saved for this dossier.</p>}</Section>
     </article>
   </main>;
+}
+
+function StorySection({ paragraphs }: { paragraphs: string[] }) {
+  return <section className="story-body" id="story">
+    <p className="eyebrow">Story</p>
+    {paragraphs.map((paragraph) => <p key={paragraph}>{paragraph}</p>)}
+  </section>;
 }
 
 function EvidencePanel({ refs }: { refs: Array<{ id: string; title: string; url: string; publicationDate: string | null; sourceType: string }> }) {
   const visibleRefs = refs.slice(0, 4);
   return <section className="evidence-panel" aria-label="Evidence links">
     <div>
-      <p className="eyebrow">Evidence links</p>
-      <h2>Open the source material</h2>
-      <p>These are the archive records the dossier cites. They open in a new tab.</p>
+      <p className="eyebrow">Sources</p>
+      <h2>Archive evidence</h2>
+      <p>These are the records behind the story and citations. They open in a new tab.</p>
     </div>
     {visibleRefs.length ? <div className="source-buttons">
       {visibleRefs.map((ref) => <a className="secondary source-button" href={ref.url} target="_blank" rel="noreferrer" key={ref.id}>
