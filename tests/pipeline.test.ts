@@ -34,10 +34,11 @@ test("pipeline can advance a research brief into a cited dossier draft", () => {
   ];
 
   const candidates = buildCandidateFunnel(records);
-  assert.equal(candidates.every((candidate) => candidate.status === "active"), true);
+  assert.equal(candidates[0].status, "active");
+  assert.equal(candidates[1].status, "duplicate");
 
   const candidate = candidates[0];
-  const evidenceSourceIds = records.map((record) => `${record.source}:${record.id}`);
+  const evidenceSourceIds = candidate.evidenceSourceIds;
   const investigation = {
     externalId: candidate.record.id,
     title: candidate.record.title,

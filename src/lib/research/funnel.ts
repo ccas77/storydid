@@ -30,14 +30,23 @@ export type StageBudget = {
 
 const institutionalTerms = [
   "annual report",
+  "arrangements for address",
+  "anthology",
   "board minutes",
   "committee minutes",
+  "correspondence",
   "meeting minutes",
   "proceedings",
   "catalogue",
   "directory",
   "budget estimate",
   "appropriation bill",
+  "retirement dinner",
+];
+
+const archiveNoiseTerms = [
+  "cia reading room",
+  "literatures of colonial america",
 ];
 
 const narrativeTerms = [
@@ -143,8 +152,12 @@ export function buildCandidateFunnel(records: ArchiveRecord[], budget = defaultS
 
 export function rejectRecord(record: ArchiveRecord): { code: Exclude<RejectionCode, "duplicate">; reason: string } | undefined {
   const text = `${record.title} ${record.description ?? ""}`.toLowerCase();
+  const title = record.title.toLowerCase();
   if (record.title.trim().length < 8 || (!record.description && !record.date)) {
     return { code: "weak_record", reason: "The record lacks enough title, date, or description detail to support a story hypothesis." };
+  }
+  if (archiveNoiseTerms.some((term) => title.includes(term))) {
+    return { code: "institutional_minutiae", reason: "The record is an archive container or institutional file rather than a story lead." };
   }
   if (institutionalTerms.some((term) => text.includes(term)) && !narrativeTerms.some((term) => text.includes(term))) {
     return { code: "institutional_minutiae", reason: "The record appears to be routine institutional material without clear narrative stakes." };
@@ -188,16 +201,44 @@ function mergeDuplicateEvidence(decisions: FunnelDecision[]) {
 }
 
 function mergeRelatedEvidence(decisions: FunnelDecision[]) {
+  const active = decisions.filter((decision) => decision.status === "active");
+  const duplicateOf = new Map<string, string>();
+  const evidenceByRoot = new Map<string, string[]>();
+
+  for (const seed of active) {
+    if (duplicateOf.has(seed.record.id)) continue;
+    const cluster = active.filter((candidate) => !duplicateOf.has(candidate.record.id) && recordsAppearRelated(seed, candidate));
+    const root = cluster.sort((a, b) => rootScore(b) - rootScore(a))[0] ?? seed;
+    evidenceByRoot.set(root.record.id, cluster.flatMap((candidate) => candidate.evidenceSourceIds));
+    for (const candidate of cluster) {
+      if (candidate.record.id !== root.record.id) duplicateOf.set(candidate.record.id, root.record.id);
+    }
+  }
+
   return decisions.map((decision) => {
     if (decision.status !== "active") return decision;
-    const relatedEvidence = decisions
-      .filter((other) => other.status === "active" && recordsAppearRelated(decision, other))
-      .flatMap((other) => other.evidenceSourceIds);
+    const rootId = duplicateOf.get(decision.record.id);
+    if (rootId) {
+      return {
+        ...decision,
+        status: "duplicate" as const,
+        rejectionCode: "duplicate" as const,
+        rejectionReason: "Record is supporting evidence for a stronger candidate about the same underlying story.",
+        duplicateOf: rootId,
+      };
+    }
     return {
       ...decision,
-      evidenceSourceIds: Array.from(new Set([...decision.evidenceSourceIds, ...relatedEvidence])),
+      evidenceSourceIds: Array.from(new Set(evidenceByRoot.get(decision.record.id) ?? decision.evidenceSourceIds)),
     };
   });
+}
+
+function rootScore(decision: FunnelDecision) {
+  const title = decision.record.title.toLowerCase();
+  const titleNarrativeBonus = narrativeTerms.filter((term) => title.includes(term)).length * 28;
+  const containerPenalty = /\b(times|mail|gazette|news|herald|tribune)\b/i.test(decision.record.title) ? 18 : 0;
+  return decision.scores.narrativeSignal * 2 + decision.scores.sourceSignal + decision.scores.specificity + titleNarrativeBonus - containerPenalty;
 }
 
 function recordsAppearRelated(a: FunnelDecision, b: FunnelDecision) {

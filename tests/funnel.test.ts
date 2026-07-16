@@ -65,6 +65,8 @@ test("buildCandidateFunnel merges related cross-archive evidence into the same s
   ]);
 
   assert.equal(decisions[0].status, "active");
+  assert.equal(decisions[1].status, "duplicate");
+  assert.equal(decisions[1].duplicateOf, "91149767");
   assert.ok(decisions[0].evidenceSourceIds.includes("loc:91149767"));
   assert.ok(decisions[0].evidenceSourceIds.includes("internet_archive:MCU_1928052401"));
 });
@@ -81,7 +83,7 @@ test("buildCandidateFunnel rejects records unrelated to a research brief", () =>
   ], undefined, "Mather mine disaster testimony investigation 1928 independent newspaper report");
 
   assert.equal(decisions[0].status, "rejected");
-  assert.equal(decisions[0].rejectionReason, "The record does not match enough distinctive terms from the beat or research brief.");
+  assert.equal(decisions[0].rejectionCode, "institutional_minutiae");
 });
 
 test("buildCandidateFunnel requires strong research brief relevance before investigation", () => {
@@ -108,6 +110,32 @@ test("buildCandidateFunnel requires strong research brief relevance before inves
 
   assert.equal(decisions[0].status, "rejected");
   assert.equal(decisions[1].status, "active");
+});
+
+test("buildCandidateFunnel rejects archive containers and institutional files as leads", () => {
+  const decisions = buildCandidateFunnel([
+    record({
+      id: "cia-retirement-dinner",
+      title: "CIA Reading Room cia-rdp90g01353r002000020005-7: arrangements for address of general retirement dinner",
+      url: "https://archive.org/details/cia-readingroom-document",
+      date: "1988",
+      description: "Administrative correspondence about a retirement dinner.",
+      source: "internet_archive",
+    }),
+    record({
+      id: "colonial-literature",
+      title: "The literatures of colonial America : an anthology",
+      url: "https://archive.org/details/literaturesofcol0000unse",
+      date: "2001",
+      description: "Anthology of colonial literature.",
+      source: "internet_archive",
+    }),
+  ], undefined, "Mather mine disaster Mather Pennsylvania 1928 independent newspaper report");
+
+  assert.equal(decisions[0].status, "rejected");
+  assert.equal(decisions[0].rejectionCode, "institutional_minutiae");
+  assert.equal(decisions[1].status, "rejected");
+  assert.equal(decisions[1].rejectionCode, "institutional_minutiae");
 });
 
 test("applyRecordBudget caps candidate work", () => {
