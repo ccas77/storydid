@@ -6,15 +6,10 @@ import { eq, inArray } from "drizzle-orm";
 import { getDb } from "@/db";
 import { ensureResearchSchema } from "@/db/bootstrap";
 import { archiveRecords, beats, editorialRecommendations, researchActivity, researchCycles, researchSettings, sources, stories } from "@/db/schema";
-import { isAuthorizedAction } from "@/lib/action-auth";
 import { makeBriefSeeds, slugFromBrief } from "@/lib/research/queries";
 import { archiveLookupIds } from "@/lib/research/source-ids";
 
 export async function autopilotAction(formData: FormData) {
-  if (!isAuthorizedAction(formData)) {
-    console.warn("[storydid:action] autopilot blocked by owner code");
-    redirect("/?notice=bad-code");
-  }
   const enabled = String(formData.get("enabled") ?? "") === "true";
   const db = getDb();
   if (!db) {
@@ -44,10 +39,6 @@ export async function autopilotAction(formData: FormData) {
 }
 
 export async function startResearchBriefAction(formData: FormData) {
-  if (!isAuthorizedAction(formData)) {
-    console.warn("[storydid:action] brief blocked by owner code");
-    redirect("/?notice=bad-code");
-  }
   const prompt = String(formData.get("prompt") ?? "").replace(/\s+/g, " ").trim();
   const db = getDb();
   if (!db) {
@@ -94,10 +85,6 @@ export async function startResearchBriefAction(formData: FormData) {
 }
 
 export async function recommendationAction(formData: FormData) {
-  if (!isAuthorizedAction(formData)) {
-    console.warn("[storydid:action] recommendation blocked by owner code");
-    redirect("/?notice=bad-code");
-  }
   const id = String(formData.get("id") ?? "");
   const action = String(formData.get("action") ?? "");
   const db = getDb();

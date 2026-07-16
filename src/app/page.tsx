@@ -3,7 +3,6 @@ import { desc, eq, ne } from "drizzle-orm";
 import { getDb } from "@/db";
 import { ensureResearchSchema } from "@/db/bootstrap";
 import { beats, candidateFunnelItems, editorialRecommendations, researchCycles, researchSettings, stories } from "@/db/schema";
-import { accessCodeConfigured, accessCodeReady } from "@/lib/action-auth";
 import { isCitedDossier, isResearchedRecommendation } from "@/lib/research/display";
 import { autopilotAction, recommendationAction, startResearchBriefAction } from "./actions";
 
@@ -28,8 +27,6 @@ export default async function Home({ searchParams }: HomeProps) {
   const [autopilot] = db ? await db.select().from(researchSettings).where(eq(researchSettings.key, "autopilot")).limit(1).catch(() => []) : [];
   const autopilotEnabled = autopilot?.value.enabled !== false;
   const latestCycle = cycleRows[0];
-  const needsAccessCode = accessCodeConfigured();
-  const controlsReady = accessCodeReady();
 
   return <main className="shell">
     <header className="top">
@@ -61,12 +58,10 @@ export default async function Home({ searchParams }: HomeProps) {
         <p className="eyebrow">Autopilot</p>
         <h1>{autopilotEnabled ? "Research is running" : "Research is paused"}</h1>
         <p>The agent advances one persisted stage at a time. Latest stage: <b>{latestCycle?.currentStage.replaceAll("_", " ") ?? "waiting for first cycle"}</b>.</p>
-        {!controlsReady ? <p className="warning">Owner controls need RESEARCH_ACCESS_CODE configured in Vercel.</p> : null}
       </div>
       <form action={autopilotAction} className="switch-form">
         <input type="hidden" name="enabled" value={autopilotEnabled ? "false" : "true"} />
-        <AccessCodeField enabled={needsAccessCode} />
-        <button className={`switch ${autopilotEnabled ? "is-on" : ""}`} type="submit" aria-pressed={autopilotEnabled} disabled={!controlsReady}>
+        <button className={`switch ${autopilotEnabled ? "is-on" : ""}`} type="submit" aria-pressed={autopilotEnabled}>
           <span className="switch-track"><span className="switch-thumb" /></span>
           <span>{autopilotEnabled ? "On" : "Paused"}</span>
         </button>
@@ -88,8 +83,7 @@ export default async function Home({ searchParams }: HomeProps) {
       </div>
       <form action={startResearchBriefAction} className="brief-form">
         <textarea name="prompt" minLength={12} required placeholder="Example: a suspicious charity scandal in New York newspapers between 1890 and 1925" />
-        <AccessCodeField enabled={needsAccessCode} />
-        <button className="primary" type="submit" disabled={!controlsReady}>Queue brief</button>
+        <button className="primary" type="submit">Queue brief</button>
       </form>
     </section>
 
@@ -138,7 +132,7 @@ export default async function Home({ searchParams }: HomeProps) {
           </div>
           {recommendation.storyId ? <Link className="secondary" href={`/stories/${recommendation.storyId}`}>Open dossier</Link> : null}
         </div>
-        <RecommendationActions id={recommendation.id} needsAccessCode={needsAccessCode} controlsReady={controlsReady} />
+        <RecommendationActions id={recommendation.id} />
       </article>) : <div className="empty"><h2>No publishable recommendations yet</h2><p>The pipeline has run, but nothing has passed the evidence gate for editorial recommendation. The app is showing research decisions below instead of inventing output.</p></div>}
     </section>
 
@@ -175,12 +169,7 @@ function Status({ title, value }: { title: string; value: string }) {
   return <div className="status-item"><b>{title}</b><span>{value}</span></div>;
 }
 
-function AccessCodeField({ enabled }: { enabled: boolean }) {
-  if (!enabled) return null;
-  return <input className="access-code" name="accessCode" type="password" autoComplete="off" placeholder="Owner access code" required />;
-}
-
-function RecommendationActions({ id, needsAccessCode, controlsReady }: { id: string; needsAccessCode: boolean; controlsReady: boolean }) {
+function RecommendationActions({ id }: { id: string }) {
   return <div className="actions">
     {[
       ["develop", "Develop", "primary"],
@@ -190,8 +179,7 @@ function RecommendationActions({ id, needsAccessCode, controlsReady }: { id: str
     ].map(([action, label, className]) => <form action={recommendationAction} key={action}>
       <input type="hidden" name="id" value={id} />
       <input type="hidden" name="action" value={action} />
-      <AccessCodeField enabled={needsAccessCode} />
-      <button className={className} type="submit" disabled={!controlsReady}>{label}</button>
+      <button className={className} type="submit">{label}</button>
     </form>)}
   </div>;
 }
@@ -208,14 +196,6 @@ function noticeFromParams(params: Record<string, string | string[] | undefined>)
       detail: "The agent will advance it through discovery, filtering, follow-up research, and dossier readiness as separate resumable stages.",
       href: beat ? `/beats/${beat}` : undefined,
       cta: "Open beat",
-    };
-  }
-  if (notice === "bad-code") {
-    return {
-      tone: "error",
-      eyebrow: "Action blocked",
-      title: "That owner access code did not match.",
-      detail: "Use the current RESEARCH_ACCESS_CODE from Vercel, or rotate it and redeploy before trying again.",
     };
   }
   if (notice === "missing-db") {
