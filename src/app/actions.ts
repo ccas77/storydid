@@ -11,10 +11,16 @@ import { makeBriefSeeds, slugFromBrief } from "@/lib/research/queries";
 import { archiveLookupIds } from "@/lib/research/source-ids";
 
 export async function autopilotAction(formData: FormData) {
-  if (!isAuthorizedAction(formData)) redirect("/?notice=bad-code");
+  if (!isAuthorizedAction(formData)) {
+    console.warn("[storydid:action] autopilot blocked by owner code");
+    redirect("/?notice=bad-code");
+  }
   const enabled = String(formData.get("enabled") ?? "") === "true";
   const db = getDb();
-  if (!db) redirect("/?notice=missing-db");
+  if (!db) {
+    console.error("[storydid:action] autopilot missing DATABASE_URL");
+    redirect("/?notice=missing-db");
+  }
 
   await db.insert(researchSettings).values({
     key: "autopilot",
@@ -33,15 +39,25 @@ export async function autopilotAction(formData: FormData) {
 
   revalidatePath("/");
   revalidatePath("/activity");
+  console.info("[storydid:action] autopilot updated", { enabled });
   redirect(`/?notice=${enabled ? "autopilot-on" : "autopilot-off"}`);
 }
 
 export async function startResearchBriefAction(formData: FormData) {
-  if (!isAuthorizedAction(formData)) redirect("/?notice=bad-code");
+  if (!isAuthorizedAction(formData)) {
+    console.warn("[storydid:action] brief blocked by owner code");
+    redirect("/?notice=bad-code");
+  }
   const prompt = String(formData.get("prompt") ?? "").replace(/\s+/g, " ").trim();
   const db = getDb();
-  if (!db) redirect("/?notice=missing-db");
-  if (prompt.length < 12) redirect("/?notice=brief-too-short");
+  if (!db) {
+    console.error("[storydid:action] brief missing DATABASE_URL");
+    redirect("/?notice=missing-db");
+  }
+  if (prompt.length < 12) {
+    console.warn("[storydid:action] brief rejected as too short", { length: prompt.length });
+    redirect("/?notice=brief-too-short");
+  }
 
   await ensureResearchSchema();
   const seeds = makeBriefSeeds(prompt);
@@ -73,19 +89,32 @@ export async function startResearchBriefAction(formData: FormData) {
 
   revalidatePath("/");
   revalidatePath("/activity");
+  console.info("[storydid:action] brief queued", { slug, cycleId: cycle.id });
   redirect(`/?notice=brief-queued&beat=${encodeURIComponent(slug)}`);
 }
 
 export async function recommendationAction(formData: FormData) {
-  if (!isAuthorizedAction(formData)) redirect("/?notice=bad-code");
+  if (!isAuthorizedAction(formData)) {
+    console.warn("[storydid:action] recommendation blocked by owner code");
+    redirect("/?notice=bad-code");
+  }
   const id = String(formData.get("id") ?? "");
   const action = String(formData.get("action") ?? "");
   const db = getDb();
-  if (!db) redirect("/?notice=missing-db");
-  if (!id) redirect("/?notice=missing-recommendation");
+  if (!db) {
+    console.error("[storydid:action] recommendation missing DATABASE_URL");
+    redirect("/?notice=missing-db");
+  }
+  if (!id) {
+    console.warn("[storydid:action] recommendation missing id");
+    redirect("/?notice=missing-recommendation");
+  }
 
   const [recommendation] = await db.select().from(editorialRecommendations).where(eq(editorialRecommendations.id, id)).limit(1);
-  if (!recommendation) redirect("/?notice=missing-recommendation");
+  if (!recommendation) {
+    console.warn("[storydid:action] recommendation not found", { id });
+    redirect("/?notice=missing-recommendation");
+  }
 
   if (action === "dismiss") {
     await db.update(editorialRecommendations).set({ status: "dismissed", updatedAt: new Date() }).where(eq(editorialRecommendations.id, id));
@@ -136,6 +165,7 @@ export async function recommendationAction(formData: FormData) {
 
   revalidatePath("/");
   revalidatePath("/activity");
+  console.info("[storydid:action] recommendation action saved", { id, action });
   redirect(`/?notice=action-saved&action=${encodeURIComponent(action)}`);
 }
 
