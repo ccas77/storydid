@@ -84,6 +84,32 @@ test("buildCandidateFunnel rejects records unrelated to a research brief", () =>
   assert.equal(decisions[0].rejectionReason, "The record does not match enough distinctive terms from the beat or research brief.");
 });
 
+test("buildCandidateFunnel requires strong research brief relevance before investigation", () => {
+  const decisions = buildCandidateFunnel([
+    record({
+      id: "cia-retirement-dinner",
+      title: "CIA Reading Room arrangements for a retirement dinner",
+      url: "https://archive.org/details/cia-readingroom-document",
+      date: "1988",
+      location: "Washington, D.C.",
+      description: "Administrative correspondence about a retirement dinner and intelligence office arrangements.",
+      source: "internet_archive",
+    }),
+    record({
+      id: "mather-mine-disaster",
+      title: "The Mather mine disaster",
+      url: "https://www.loc.gov/item/91149767/",
+      date: "1928",
+      location: "Mather, Pennsylvania",
+      description: "Report on the Mather mine disaster and rescue work in Pennsylvania.",
+      source: "loc",
+    }),
+  ], undefined, "Mather mine disaster Mather Pennsylvania 1928 independent newspaper report");
+
+  assert.equal(decisions[0].status, "rejected");
+  assert.equal(decisions[1].status, "active");
+});
+
 test("applyRecordBudget caps candidate work", () => {
   const items = [1, 2, 3, 4, 5];
 

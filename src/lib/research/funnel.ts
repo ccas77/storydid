@@ -215,7 +215,8 @@ function candidateTerms(decision: FunnelDecision) {
 function recordMatchesContext(record: ArchiveRecord, contextTerms: Set<string>) {
   const terms = relevanceTerms(`${record.title} ${record.description ?? ""} ${record.location ?? ""} ${record.date ?? ""}`);
   const overlap = [...contextTerms].filter((term) => terms.has(term));
-  return overlap.length >= Math.min(2, contextTerms.size);
+  const requiredOverlap = contextTerms.size >= 5 ? 3 : Math.min(2, contextTerms.size);
+  return overlap.length >= requiredOverlap;
 }
 
 function relevanceTerms(value: string) {
@@ -223,8 +224,8 @@ function relevanceTerms(value: string) {
     .toLowerCase()
     .replace(/[^a-z0-9\s]+/g, " ")
     .split(/\s+/)
-    .filter((term) => term.length > 4)
-    .filter((term) => !["about", "after", "around", "before", "between", "committee", "disaster", "great", "independent", "investigation", "newspaper", "report", "testimony"].includes(term)));
+    .filter((term) => term.length >= 4 || /^(18|19|20)\d{2}$/.test(term))
+    .filter((term) => !["about", "after", "around", "before", "between", "committee", "great", "independent", "investigation", "newspaper", "report", "testimony"].includes(term)));
 }
 
 function evidenceSourceId(record: ArchiveRecord) {
