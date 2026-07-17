@@ -1,5 +1,6 @@
 import OpenAI from "openai";
 import { z } from "zod";
+import { PUBLISH_READY_MAX_WORDS, PUBLISH_READY_MIN_WORDS, PUBLISH_READY_TARGET_WORDS } from "./story-length";
 import type { StoryScript, StoryScriptInput } from "@/lib/types";
 
 const scriptSchema = z.object({
@@ -8,7 +9,7 @@ const scriptSchema = z.object({
     heading: z.string().min(3),
     narration: z.string().min(80),
     sourceIds: z.array(z.string()),
-  })).min(2).max(8),
+  })).min(5).max(9),
   closingLine: z.string().min(20),
   disclaimer: z.string().min(20),
 });
@@ -21,8 +22,8 @@ const scriptJsonSchema = {
     hook: { type: "string" },
     segments: {
       type: "array",
-      minItems: 2,
-      maxItems: 8,
+      minItems: 5,
+      maxItems: 9,
       items: {
         type: "object",
         additionalProperties: false,
@@ -60,7 +61,7 @@ export async function generateStoryScript(input: StoryScriptInput): Promise<Stor
           "Use only the supplied dossier and source records. Never add facts, names, dates, causes, quotes, or motives that are not supported by the input.",
           "Treat newspaper claims and accusations as allegations unless the dossier proves them independently.",
           "Follow the dossier outline as the story spine when it exists.",
-          "Write a cold-open hook, outline-driven story segments, a closing line, and a short evidence disclaimer.",
+          `Write a cold-open hook, outline-driven story segments, a closing line, and a short evidence disclaimer totaling about ${PUBLISH_READY_TARGET_WORDS} words.`,
           "Every segment must cite one or more supplied source IDs. Use only exact source IDs from the input.",
           "Do not output links, markdown, bullet lists, placeholders, or process commentary.",
         ].join(" "),
@@ -85,7 +86,7 @@ export async function generateStoryScript(input: StoryScriptInput): Promise<Stor
             claimCitations: input.claimCitations,
           },
           sources: input.sources,
-          target: "A 650-950 word narrative script for a general audience.",
+          target: `A ${PUBLISH_READY_MIN_WORDS}-${PUBLISH_READY_MAX_WORDS} word narrative script for a general audience.`,
         }),
       },
     ],
@@ -103,6 +104,10 @@ export async function generateStoryScript(input: StoryScriptInput): Promise<Stor
   const cleaned = sanitizeStoryScript(parsed, validSourceIds);
   if (!cleaned.segments.some((segment) => segment.sourceIds.length > 0)) {
     throw new Error("Story generation returned no valid source citations.");
+  }
+  const generatedWords = wordCount(cleaned);
+  if (generatedWords < PUBLISH_READY_MIN_WORDS) {
+    throw new Error(`Story generation returned ${generatedWords} words; expected at least ${PUBLISH_READY_MIN_WORDS}.`);
   }
   return cleaned;
 }

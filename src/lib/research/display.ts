@@ -1,3 +1,5 @@
+import { PUBLISH_READY_MIN_WORDS } from "./story-length";
+
 export function isResearchedRecommendation(item: { confidence: number; researchCompleteness: number; strongestEvidence: unknown; status: string }) {
   return item.status === "dossier_ready" || (
     item.confidence >= 45 &&
@@ -30,6 +32,7 @@ export function isCompletedStory(item: Parameters<typeof isCitedDossier>[0] & {
   scriptStatus?: string | null;
   scriptHook?: string | null;
   scriptSegments?: unknown;
+  scriptWordCount?: number | null;
 }) {
   return isCitedDossier(item) && hasReadyStoryScript(item);
 }
@@ -44,8 +47,9 @@ export function uniqueEditorialStories<T extends { workingTitle: string; summary
   });
 }
 
-function hasReadyStoryScript(item: { scriptStatus?: string | null; scriptHook?: string | null; scriptSegments?: unknown }) {
+function hasReadyStoryScript(item: { scriptStatus?: string | null; scriptHook?: string | null; scriptSegments?: unknown; scriptWordCount?: number | null }) {
   if (item.scriptStatus !== "ready") return false;
+  if (!item.scriptWordCount || item.scriptWordCount < PUBLISH_READY_MIN_WORDS) return false;
   if (!item.scriptHook || item.scriptHook.replace(/\s+/g, " ").trim().length < 40) return false;
   if (!Array.isArray(item.scriptSegments)) return false;
   return item.scriptSegments.some((segment) => {

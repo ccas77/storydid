@@ -1,4 +1,5 @@
 import { isCitedDossier, isCompletedStory } from "./display";
+import { PUBLISH_READY_MIN_WORDS } from "./story-length";
 
 export type BriefCycleStatus = {
   beatId: string | null;
@@ -29,6 +30,7 @@ export type BriefStoryStatus = {
   scriptStatus?: string | null;
   scriptHook?: string | null;
   scriptSegments?: unknown;
+  scriptWordCount?: number | null;
 };
 
 export type LatestBriefStatus = {
@@ -78,5 +80,6 @@ export function progressText(status: string, stage: string) {
 function dossierStatusText(story: BriefStoryStatus) {
   if (story.scriptStatus === "generating") return "Dossier ready · story generation running";
   if (story.scriptStatus === "failed") return "Dossier ready · story generation needs attention";
+  if (story.scriptStatus === "ready" && (story.scriptWordCount ?? 0) < PUBLISH_READY_MIN_WORDS) return "Dossier ready · story needs expansion to 2000 words";
   return "Dossier ready · story generation pending";
 }

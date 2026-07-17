@@ -1,8 +1,9 @@
 import type { InferSelectModel } from "drizzle-orm";
 import { sources, stories } from "@/db/schema";
 import type { StoryScript, StoryScriptInput } from "@/lib/types";
-import { isCitedDossier } from "./display";
+import { isCitedDossier, isCompletedStory } from "./display";
 import { generateStoryScript, wordCount } from "./story";
+import { PUBLISH_READY_MIN_WORDS } from "./story-length";
 
 export type StoryRow = InferSelectModel<typeof stories>;
 export type SourceRow = InferSelectModel<typeof sources>;
@@ -16,11 +17,15 @@ export async function generateStoryScriptUpdateForDossier(
 ) {
   if (!refs.length) throw new Error("Story generation requires saved cited sources.");
   const script = await generator(buildStoryScriptInput(story, refs));
+  const generatedWords = wordCount(script);
+  if (generatedWords < PUBLISH_READY_MIN_WORDS) {
+    throw new Error(`Story generation returned ${generatedWords} words; expected at least ${PUBLISH_READY_MIN_WORDS}.`);
+  }
   return buildStoryScriptUpdate(script, now());
 }
 
 export function needsGeneratedStoryScript(story: StoryRow) {
-  return story.scriptStatus !== "ready" && isCitedDossier(story);
+  return story.scriptStatus !== "generating" && isCitedDossier(story) && !isCompletedStory(story);
 }
 
 export function buildStoryScriptInput(story: StoryRow, refs: SourceRow[]): StoryScriptInput {

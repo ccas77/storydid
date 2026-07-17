@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { isCitedDossier, isCompletedStory, uniqueEditorialStories } from "../src/lib/research/display";
+import { PUBLISH_READY_MIN_WORDS, PUBLISH_READY_TARGET_WORDS } from "../src/lib/research/story-length";
 
 const cited = {
   confidenceScore: 100,
@@ -16,6 +17,7 @@ const cited = {
     { claim: "A second report documented disputed safety inspections after the disaster and identified accountability questions.", sourceIds: ["ia:two"] },
   ],
   scriptStatus: "ready",
+  scriptWordCount: PUBLISH_READY_TARGET_WORDS,
   scriptHook: "The warning came before the blast, and that is what made the inquest impossible to ignore.",
   scriptSegments: [
     {
@@ -94,7 +96,7 @@ test("isCitedDossier keeps developed story-like historical leads", () => {
   }), true);
 });
 
-test("isCompletedStory requires a generated cited script", () => {
+test("isCompletedStory requires a generated cited 2000-word script", () => {
   const developed = {
     ...cited,
     workingTitle: "The Factory Explosion Inquest",
@@ -110,6 +112,7 @@ test("isCompletedStory requires a generated cited script", () => {
   assert.equal(isCompletedStory(developed), true);
   assert.equal(isCompletedStory({ ...developed, scriptStatus: "none", scriptHook: null, scriptSegments: [] }), false);
   assert.equal(isCompletedStory({ ...developed, scriptSegments: [{ heading: "Opening", narration: "Too short.", sourceIds: [] }] }), false);
+  assert.equal(isCompletedStory({ ...developed, scriptWordCount: PUBLISH_READY_MIN_WORDS - 1 }), false);
 });
 
 test("uniqueEditorialStories deduplicates repeated story titles", () => {

@@ -9,6 +9,7 @@ import { prepareDossierDraft } from "../src/lib/research/dossier";
 import { generateStoryScriptUpdateForDossier, type SourceRow, type StoryRow } from "../src/lib/research/story-generation";
 import { buildPublishReadyStory } from "../src/lib/research/publishable-story";
 import { isCompletedStory } from "../src/lib/research/display";
+import { PUBLISH_READY_MIN_WORDS } from "../src/lib/research/story-length";
 
 test("deterministic pipeline can reach a publish-ready cited story", async () => {
   const seeds = makeBriefSeeds("factory explosion inquest testimony in Ohio");
@@ -100,23 +101,7 @@ test("deterministic pipeline can reach a publish-ready cited story", async () =>
       excerpt: "Published investigation report documenting testimony, boiler defects, and public accountability.",
     },
   ] as unknown as SourceRow[];
-  const scriptUpdate = await generateStoryScriptUpdateForDossier(story, refs, async () => ({
-    hook: "The warning came before the blast, which is why the inquest could not treat the explosion as routine.",
-    segments: [
-      {
-        heading: "Opening",
-        narration: "Witness testimony put ignored boiler warnings at the center of the factory explosion story. That made the event more than an accident report: it became a question of who knew about the danger and who had power to respond.",
-        sourceIds: ["loc:dayton-explosion-inquest"],
-      },
-      {
-        heading: "Accountability",
-        narration: "A safety investigation added the second half of the narrative by documenting disputed inspections after the disaster. The sources together turn the story toward accountability rather than spectacle.",
-        sourceIds: ["internet_archive:factorysafetyreport1912"],
-      },
-    ],
-    closingLine: "The publish-ready story is the warning before the blast and the fight over what that warning meant.",
-    disclaimer: "Newspaper allegations should remain labeled as allegations unless independently corroborated.",
-  }));
+  const scriptUpdate = await generateStoryScriptUpdateForDossier(story, refs, async () => longGeneratedScript());
   const completedStory = { ...story, ...scriptUpdate };
   assert.equal(isCompletedStory(completedStory), true);
 
@@ -132,4 +117,18 @@ test("deterministic pipeline can reach a publish-ready cited story", async () =>
   assert.match(manuscript.plainText, /\[S1\]/);
   assert.match(manuscript.plainText, /\[S2\]/);
   assert.equal(manuscript.sources.length, 2);
+  assert.ok(manuscript.wordCount >= PUBLISH_READY_MIN_WORDS);
 });
+
+function longGeneratedScript() {
+  return {
+    hook: "The warning came before the blast, which is why the inquest could not treat the explosion as routine.",
+    segments: Array.from({ length: 5 }, (_, index) => ({
+      heading: ["Opening", "Warnings", "Explosion", "Investigation", "Accountability"][index],
+      narration: Array.from({ length: 19 }, () => "Witness testimony kept returning to the boiler warning, the inspection dispute, and the public fight over accountability after the factory explosion.").join(" "),
+      sourceIds: [index % 2 === 0 ? "loc:dayton-explosion-inquest" : "internet_archive:factorysafetyreport1912"],
+    })),
+    closingLine: "The publish-ready story is the warning before the blast and the fight over what that warning meant.",
+    disclaimer: "Newspaper allegations should remain labeled as allegations unless independently corroborated.",
+  };
+}

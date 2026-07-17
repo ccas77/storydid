@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { latestBriefProgress, progressText, type BriefStoryStatus } from "../src/lib/research/status";
+import { PUBLISH_READY_TARGET_WORDS } from "../src/lib/research/story-length";
 
 const storyText = [
   "Before dawn, the factory floor had already become a place of warnings. Witnesses later described a boiler system that had been treated as a nuisance rather than a threat, and the inquest turned that ignored danger into the center of the story.",
@@ -38,6 +39,7 @@ const baseStory: BriefStoryStatus = {
     { date: "1913", event: "Witness testimony and disputed inspections created a public fight over responsibility." },
   ],
   scriptStatus: "none",
+  scriptWordCount: 0,
   scriptHook: null,
   scriptSegments: [],
 };
@@ -71,6 +73,7 @@ test("latestBriefProgress links a completed generated story", () => {
       ...baseStory,
       id: "story-ready",
       scriptStatus: "ready",
+      scriptWordCount: PUBLISH_READY_TARGET_WORDS,
       scriptHook: "The warning came before the blast, and that is what made the inquest impossible to ignore.",
       scriptSegments: [
         {
@@ -86,6 +89,28 @@ test("latestBriefProgress links a completed generated story", () => {
     name: "Factory explosion brief",
     statusText: "Story ready · publish-ready manuscript available",
     storyHref: "/stories/story-ready",
+  });
+});
+
+test("latestBriefProgress does not call a short ready script complete", () => {
+  const status = latestBriefProgress(cycles, beats, [{
+    ...baseStory,
+    scriptStatus: "ready",
+    scriptWordCount: 700,
+    scriptHook: "The warning came before the blast, and that is what made the inquest impossible to ignore.",
+    scriptSegments: [
+      {
+        heading: "Cold open",
+        narration: "The factory explosion story begins before the explosion itself, with boiler warnings that witnesses later described as ignored. Those warnings gave the inquest its dramatic question: whether the danger was known before the blast and whether anyone had the power to stop it.",
+        sourceIds: ["loc:one"],
+      },
+    ],
+  }]);
+
+  assert.deepEqual(status, {
+    name: "Factory explosion brief",
+    statusText: "Dossier ready · story needs expansion to 2000 words",
+    storyHref: "/stories/story-dossier",
   });
 });
 

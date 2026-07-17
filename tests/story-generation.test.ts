@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import type { StoryScript } from "../src/lib/types";
 import { buildStoryScriptInput, generateStoryScriptUpdateForDossier, needsGeneratedStoryScript, type SourceRow, type StoryRow } from "../src/lib/research/story-generation";
+import { PUBLISH_READY_MIN_WORDS } from "../src/lib/research/story-length";
 
 const story = {
   id: "story-1",
@@ -48,23 +49,7 @@ test("buildStoryScriptInput preserves dossier context and saved source identifie
 });
 
 test("generateStoryScriptUpdateForDossier returns a persisted ready-script update", async () => {
-  const generated: StoryScript = {
-    hook: "The first warning came before the blast, which made the later inquest impossible to treat as routine.",
-    segments: [
-      {
-        heading: "Opening",
-        narration: "The story begins with testimony about ignored boiler warnings before the factory explosion. That evidence gives the inquest a clear narrative question about who understood the danger and who had the power to act before disaster struck.",
-        sourceIds: ["loc:dayton-inquest"],
-      },
-      {
-        heading: "Accountability",
-        narration: "The safety investigation adds a second layer by documenting disputed inspections after the disaster. Read together, the sources turn the incident into a conflict over accountability rather than a bare accident summary.",
-        sourceIds: ["source-row-2"],
-      },
-    ],
-    closingLine: "The publishable story is the warning before the blast and the public fight over what that warning meant.",
-    disclaimer: "This script stays within the saved dossier and source records; newspaper allegations should be labeled as allegations.",
-  };
+  const generated = longGeneratedScript();
   const fixedDate = new Date("2026-07-17T12:00:00Z");
   const update = await generateStoryScriptUpdateForDossier(story, refs, async (input) => {
     assert.equal(input.sources.length, 2);
@@ -75,7 +60,30 @@ test("generateStoryScriptUpdateForDossier returns a persisted ready-script updat
   assert.equal(update.scriptHook, generated.hook);
   assert.deepEqual(update.scriptSegments, generated.segments);
   assert.equal(update.scriptGeneratedAt, fixedDate);
-  assert.ok(update.scriptWordCount > 50);
+  assert.ok(update.scriptWordCount >= PUBLISH_READY_MIN_WORDS);
+});
+
+test("generateStoryScriptUpdateForDossier rejects short drafts as unfinished", async () => {
+  await assert.rejects(
+    () => generateStoryScriptUpdateForDossier(story, refs, async () => ({
+      hook: "The first warning came before the blast, which made the later inquest impossible to treat as routine.",
+      segments: [
+        {
+          heading: "Opening",
+          narration: "The story begins with testimony about ignored boiler warnings before the factory explosion.",
+          sourceIds: ["loc:dayton-inquest"],
+        },
+        {
+          heading: "Accountability",
+          narration: "The safety investigation adds a second layer by documenting disputed inspections after the disaster.",
+          sourceIds: ["source-row-2"],
+        },
+      ],
+      closingLine: "The publishable story is the warning before the blast and the public fight over what that warning meant.",
+      disclaimer: "This script stays within the saved dossier and source records.",
+    })),
+    /expected at least/,
+  );
 });
 
 test("generateStoryScriptUpdateForDossier refuses dossiers without saved sources", async () => {
@@ -111,5 +119,45 @@ test("needsGeneratedStoryScript selects researched dossiers without ready script
   } as unknown as StoryRow;
 
   assert.equal(needsGeneratedStoryScript(backfillable), true);
-  assert.equal(needsGeneratedStoryScript({ ...backfillable, scriptStatus: "ready" } as StoryRow), false);
+  assert.equal(needsGeneratedStoryScript({ ...backfillable, scriptStatus: "generating" } as StoryRow), false);
+  assert.equal(needsGeneratedStoryScript({
+    ...backfillable,
+    scriptStatus: "ready",
+    scriptHook: "The first warning came before the blast, which made the later inquest impossible to treat as routine.",
+    scriptSegments: [{ heading: "Short", narration: "Too short.", sourceIds: ["loc:dayton-inquest"] }],
+    scriptWordCount: 400,
+  } as StoryRow), true);
+  assert.equal(needsGeneratedStoryScript({
+    ...backfillable,
+    scriptStatus: "ready",
+    ...longGeneratedStoryFields(),
+  } as StoryRow), false);
 });
+
+function longGeneratedStoryFields() {
+  const script = longGeneratedScript();
+  return {
+    scriptHook: script.hook,
+    scriptSegments: script.segments,
+    scriptClosingLine: script.closingLine,
+    scriptDisclaimer: script.disclaimer,
+    scriptWordCount: PUBLISH_READY_MIN_WORDS,
+  };
+}
+
+function longGeneratedScript(): StoryScript {
+  return {
+    hook: "The first warning came before the blast, which made the later inquest impossible to treat as routine.",
+    segments: Array.from({ length: 5 }, (_, index) => ({
+      heading: ["Opening", "Warning", "Explosion", "Inquest", "Accountability"][index],
+      narration: longNarration(),
+      sourceIds: [index % 2 === 0 ? "loc:dayton-inquest" : "source-row-2"],
+    })),
+    closingLine: "The publishable story is the warning before the blast and the public fight over what that warning meant.",
+    disclaimer: "This script stays within the saved dossier and source records; newspaper allegations should be labeled as allegations.",
+  };
+}
+
+function longNarration() {
+  return Array.from({ length: 19 }, () => "Witness testimony kept returning to the boiler warning, the inspection dispute, and the public fight over accountability after the factory explosion.").join(" ");
+}

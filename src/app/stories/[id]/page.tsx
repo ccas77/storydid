@@ -4,9 +4,10 @@ import { notFound } from "next/navigation";
 import { getDb } from "@/db";
 import { ensureResearchSchema } from "@/db/bootstrap";
 import { sources, stories } from "@/db/schema";
-import { isCitedDossier } from "@/lib/research/display";
+import { isCitedDossier, isCompletedStory } from "@/lib/research/display";
 import { generateStoryAction } from "@/app/actions";
 import { buildPublishReadyStory } from "@/lib/research/publishable-story";
+import { PUBLISH_READY_TARGET_WORDS } from "@/lib/research/story-length";
 import type { StoryScriptSegment } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -66,8 +67,8 @@ function StoryScriptPanel({
 }) {
   const status = field<string>(story, "scriptStatus", "none");
   const segments = scriptSegments(field(story, "scriptSegments", []));
-  const ready = status === "ready" && field(story, "scriptHook") && segments.length > 0;
-  const label = ready ? "Regenerate story" : "Generate story";
+  const ready = isCompletedStory(story);
+  const label = ready ? "Regenerate story" : status === "ready" ? "Expand story" : "Generate story";
   const manuscript = ready ? buildPublishReadyStory({
     title: story.workingTitle,
     hook: field(story, "scriptHook", "") ?? "",
@@ -90,6 +91,7 @@ function StoryScriptPanel({
     </div>
     {status === "generating" ? <p className="script-note">Story generation is running. Refresh in a moment.</p> : null}
     {status === "failed" ? <p className="script-note warning">Story generation failed. The activity trail has the error, and you can try again.</p> : null}
+    {status === "ready" && !ready ? <p className="script-note warning">A shorter draft exists, but it is not the finished {PUBLISH_READY_TARGET_WORDS}-word story. Generate again to expand it.</p> : null}
     {manuscript ? <article className="manuscript" aria-label="Publish-ready story">
       {manuscript.body.map((item, index) => <section className={`manuscript-block ${item.kind}`} key={`${item.kind}-${index}`}>
         {item.heading ? <h3>{item.heading}</h3> : null}
