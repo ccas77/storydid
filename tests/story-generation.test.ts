@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { StoryScript } from "../src/lib/types";
-import { buildStoryScriptInput, generateStoryScriptUpdateForDossier, type SourceRow, type StoryRow } from "../src/lib/research/story-generation";
+import { buildStoryScriptInput, generateStoryScriptUpdateForDossier, needsGeneratedStoryScript, type SourceRow, type StoryRow } from "../src/lib/research/story-generation";
 
 const story = {
   id: "story-1",
@@ -85,4 +85,31 @@ test("generateStoryScriptUpdateForDossier refuses dossiers without saved sources
     }),
     /requires saved cited sources/,
   );
+});
+
+test("needsGeneratedStoryScript selects researched dossiers without ready scripts", () => {
+  const backfillable = {
+    ...story,
+    confidenceScore: 100,
+    researchCompleteness: 100,
+    scriptStatus: "none",
+    storyText: [
+      "Before dawn, the factory floor had already become a place of warnings. Witnesses later described a boiler system that had been treated as a nuisance rather than a threat, and the inquest turned that ignored danger into the center of the story.",
+      "The explosion did not read like an unavoidable accident in the surviving evidence. Testimony tied the disaster to warnings, disputed inspections, and decisions made before anyone outside the building understood how close the danger had come.",
+      "That is why the inquest matters. It put survivors, inspectors, and factory leadership into conflict over what had been known, who had acted, and whether the official account could survive the record left behind.",
+      "The story is still bounded by the archive, but it has a narrative spine: warnings before the blast, testimony after it, and a public fight over responsibility for the deaths and damage that followed.",
+    ].join("\n\n"),
+    keyFacts: [
+      "Witness testimony said ignored boiler warnings preceded the factory explosion and shaped the inquest.",
+      "A second report documented disputed safety inspections after the disaster and identified accountability questions.",
+      "The surviving accounts give the story a conflict between official safety claims and what witnesses said happened.",
+    ],
+    claimCitations: [
+      { claim: "Witness testimony said ignored boiler warnings preceded the factory explosion and shaped the inquest.", sourceIds: ["loc:dayton-inquest"] },
+      { claim: "A second report documented disputed safety inspections after the disaster and identified accountability questions.", sourceIds: ["source-row-2"] },
+    ],
+  } as unknown as StoryRow;
+
+  assert.equal(needsGeneratedStoryScript(backfillable), true);
+  assert.equal(needsGeneratedStoryScript({ ...backfillable, scriptStatus: "ready" } as StoryRow), false);
 });

@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, inArray } from "drizzle-orm";
 import type { InferSelectModel } from "drizzle-orm";
 import { getDb } from "@/db";
 import { ensureResearchSchema } from "@/db/bootstrap";
@@ -16,7 +16,7 @@ import { prepareDossierDraft } from "./dossier";
 import { compareClaimableCycles } from "./cycle-claim";
 import { archiveLookupIds } from "./source-ids";
 import { isRelevantFollowUp } from "./follow-up";
-import { generateStoryScriptUpdateForDossier } from "./story-generation";
+import { generateStoryScriptUpdateForDossier, needsGeneratedStoryScript } from "./story-generation";
 import { researchRuntimeDiagnostics } from "./runtime";
 
 const DOSSIER_CONFIDENCE_THRESHOLD = 70;
@@ -31,9 +31,20 @@ export async function runResearch() {
   await ensureResearchSchema();
   await ensureBeats();
   if (!await isAutopilotEnabled()) return { ok: true, status: "paused" };
-  const cycle = await claimNextCycle();
-  if (!cycle) return { ok: true, status: "idle" };
+  const existingCycle = await claimExistingCycle();
+  if (existingCycle) return await runCycleStage(existingCycle);
 
+  const storyBackfill = await runStoryScriptBackfillStage();
+  if (storyBackfill) return storyBackfill;
+
+  const scheduledCycle = await scheduleNextCycle();
+  if (!scheduledCycle) return { ok: true, status: "idle" };
+  return await runCycleStage(scheduledCycle);
+}
+
+async function runCycleStage(cycle: CycleRow) {
+  const db = getDb();
+  if (!db) return { ok: false, error: "DATABASE_URL is not configured" };
   try {
     if (cycle.currentStage === "discovery") return await runDiscoveryStage(cycle);
     if (cycle.currentStage === "candidate_funnel") return await runCandidateFunnelStage(cycle);
@@ -66,7 +77,7 @@ async function ensureBeats() {
   await db.insert(beats).values(DEFAULT_BEATS).onConflictDoNothing({ target: beats.slug });
 }
 
-async function claimNextCycle() {
+async function claimExistingCycle() {
   const db = getDb();
   if (!db) return undefined;
   const existingCycles = await db.select().from(researchCycles)
@@ -78,7 +89,12 @@ async function claimNextCycle() {
     const [claimed] = await db.update(researchCycles).set({ status: "running", lockedAt: new Date(), updatedAt: new Date() }).where(eq(researchCycles.id, existing.id)).returning();
     return claimed;
   }
+  return undefined;
+}
 
+async function scheduleNextCycle() {
+  const db = getDb();
+  if (!db) return undefined;
   const activeBeats = await db.select().from(beats).where(eq(beats.active, true));
   const nextBeat = selectNextBeat(activeBeats.map((beat) => ({
     ...beat,
@@ -94,6 +110,38 @@ async function claimNextCycle() {
   }).returning();
   await db.update(beats).set({ lastScheduledAt: new Date(), updatedAt: new Date() }).where(eq(beats.id, nextBeat.id));
   return cycle;
+}
+
+async function runStoryScriptBackfillStage() {
+  const db = getDb();
+  if (!db) return undefined;
+  const candidates = await db.select().from(stories).orderBy(desc(stories.createdAt)).limit(50);
+  const story = candidates.find(needsGeneratedStoryScript);
+  if (!story) return undefined;
+
+  await db.update(stories).set({ scriptStatus: "generating", updatedAt: new Date() }).where(eq(stories.id, story.id));
+  try {
+    const refs = await db.select().from(sources).where(eq(sources.storyId, story.id));
+    const scriptUpdate = await generateStoryScriptUpdateForDossier(story, refs);
+    await db.update(stories).set(scriptUpdate).where(eq(stories.id, story.id));
+    await db.insert(researchActivity).values({
+      kind: "story_generated",
+      title: "Story script generated",
+      detail: `${story.workingTitle} now has a source-grounded narrative script.`,
+      metadata: { storyId: story.id, wordCount: scriptUpdate.scriptWordCount, source: "backfill" },
+    }).catch(() => undefined);
+    return { ok: true, stageCompleted: "story_script_backfill", status: "story_ready", storyId: story.id };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Story generation failed.";
+    await db.update(stories).set({ scriptStatus: "failed", updatedAt: new Date() }).where(eq(stories.id, story.id));
+    await db.insert(researchActivity).values({
+      kind: "story_generation_failed",
+      title: "Story generation failed",
+      detail: message,
+      metadata: { storyId: story.id, source: "backfill" },
+    }).catch(() => undefined);
+    return { ok: false, stageCompleted: "story_script_backfill", status: "failed", storyId: story.id, error: message };
+  }
 }
 
 async function runDiscoveryStage(cycle: CycleRow) {
