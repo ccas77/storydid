@@ -16,7 +16,8 @@ import { prepareDossierDraft } from "./dossier";
 import { compareClaimableCycles } from "./cycle-claim";
 import { archiveLookupIds } from "./source-ids";
 import { isRelevantFollowUp } from "./follow-up";
-import { generateStoryScript, wordCount } from "./story";
+import { generateStoryScriptUpdateForDossier } from "./story-generation";
+import { researchRuntimeDiagnostics } from "./runtime";
 
 const DOSSIER_CONFIDENCE_THRESHOLD = 70;
 const DOSSIER_COMPLETENESS_THRESHOLD = 72;
@@ -25,7 +26,7 @@ type CycleRow = InferSelectModel<typeof researchCycles>;
 
 export async function runResearch() {
   const db = getDb();
-  if (!db) return { ok: false, error: "DATABASE_URL is not configured" };
+  if (!db) return { ok: false, error: "DATABASE_URL is not configured", diagnostics: researchRuntimeDiagnostics() };
 
   await ensureResearchSchema();
   await ensureBeats();
@@ -559,39 +560,9 @@ async function generateAndPersistStoryScript(cycle: CycleRow, story: typeof stor
   await db.update(stories).set({ scriptStatus: "generating", updatedAt: new Date() }).where(eq(stories.id, story.id));
   try {
     const refs = await db.select().from(sources).where(eq(sources.storyId, story.id));
-    const script = await generateStoryScript({
-      workingTitle: story.workingTitle,
-      category: story.category,
-      summary: story.summary,
-      storyText: story.storyText,
-      eventDate: story.eventDate,
-      location: story.location,
-      premise: story.premise,
-      narrativeHook: story.narrativeHook,
-      chronology: story.chronology ?? [],
-      keyFacts: story.keyFacts ?? [],
-      conflicts: story.conflicts ?? [],
-      unresolvedRisks: story.unresolvedRisks ?? [],
-      outline: story.outline ?? [],
-      claimCitations: story.claimCitations ?? [],
-      sources: refs.map((ref) => ({
-        id: ref.archiveIdentifier ?? ref.id,
-        title: ref.title,
-        date: ref.publicationDate,
-        excerpt: ref.excerpt,
-      })),
-    });
-    await db.update(stories).set({
-      scriptStatus: "ready",
-      scriptHook: script.hook,
-      scriptSegments: script.segments,
-      scriptClosingLine: script.closingLine,
-      scriptDisclaimer: script.disclaimer,
-      scriptWordCount: wordCount(script),
-      scriptGeneratedAt: new Date(),
-      updatedAt: new Date(),
-    }).where(eq(stories.id, story.id));
-    await logActivity(cycle, "story_generated", "Story script generated", `${story.workingTitle} now has a source-grounded narrative script.`, { storyId: story.id, wordCount: wordCount(script) });
+    const scriptUpdate = await generateStoryScriptUpdateForDossier(story, refs);
+    await db.update(stories).set(scriptUpdate).where(eq(stories.id, story.id));
+    await logActivity(cycle, "story_generated", "Story script generated", `${story.workingTitle} now has a source-grounded narrative script.`, { storyId: story.id, wordCount: scriptUpdate.scriptWordCount });
     return true;
   } catch (error) {
     const message = error instanceof Error ? error.message : "Story generation failed.";

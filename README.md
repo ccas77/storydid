@@ -1,6 +1,6 @@
 # StoryDid
 
-A runnable MVP that mines public historical archives, groups promising records into story candidates, scores them, and produces source-backed research dossiers for YouTube and Facebook planning.
+A runnable autonomous research pipeline that mines public historical archives, filters and researches promising leads, and produces source-backed story scripts for YouTube and Facebook planning.
 
 ## What works
 
@@ -8,9 +8,10 @@ A runnable MVP that mines public historical archives, groups promising records i
 - Live Internet Archive text search
 - Daily rotating search queries
 - OpenAI structured extraction into dossiers
+- OpenAI story generation grounded in saved dossier sources
 - Evidence-linked Postgres storage
-- Manual research button
-- Vercel daily cron endpoint
+- Research brief intake with autonomous stage advancement
+- Vercel cron endpoint for scheduled research work
 - Empty states when research has not produced real records yet
 
 ## Setup
@@ -19,7 +20,9 @@ A runnable MVP that mines public historical archives, groups promising records i
 2. Copy `.env.example` to `.env.local`
 3. Add an OpenAI API key and a Postgres connection string, such as Neon
 4. Run `npm run db:push`
-5. Run `npm run dev`
+5. Check runtime configuration: `npm run research:diagnose`
+6. Run one research stage from the terminal: `npm run research:run`
+7. Run the app: `npm run dev`
 
 Open `http://localhost:3000`.
 
@@ -29,11 +32,14 @@ Open `http://localhost:3000`.
 - `DATABASE_URL`: Postgres connection string; without it the UI shows empty states
 - `CRON_SECRET`: protects `/api/cron/daily`
 - `RESEARCH_MODEL`: defaults to `gpt-5-mini`
+- `STORY_MODEL`: optional override for story script generation
 
 ## Deploying on Vercel
 
 Import the repository, configure the environment variables, run `npm run db:push` against the production database, and deploy. `vercel.json` runs the research scheduler every 15 minutes.
 
+To verify a deployment, confirm `npm run research:diagnose` reports `canRunPipeline: true`, then trigger `/api/research/run` or `/api/cron/daily` with `Authorization: Bearer $CRON_SECRET` until a queued brief reaches a generated story.
+
 ## Research safeguards
 
-The model is instructed to use only returned archive records, label allegations properly, and attach selected archive record IDs to each dossier. The current MVP uses archive metadata and descriptions. A production version should add OCR file retrieval, page-level excerpts, YouTube competition checks, source clustering, and a human approval state before script generation.
+The model is instructed to use only returned archive records, label allegations properly, and attach selected archive record IDs to each dossier and story segment. The current MVP uses archive metadata and descriptions. A production version should add OCR file retrieval, page-level excerpts, YouTube competition checks, stronger source clustering, and editorial export formats.

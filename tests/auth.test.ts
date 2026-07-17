@@ -29,3 +29,13 @@ test("isAuthorizedResearchRequest rejects missing credentials", () => {
 
   assert.equal(isAuthorizedResearchRequest(request), false);
 });
+
+test("isAuthorizedResearchRequest rejects quoted-empty cron secret", () => {
+  process.env.CRON_SECRET = "\"\"";
+
+  const request = new Request("https://storydid.test/api/research/run", {
+    headers: { authorization: "Bearer \"\"" },
+  });
+
+  assert.equal(isAuthorizedResearchRequest(request), false);
+});

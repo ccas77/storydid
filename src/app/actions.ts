@@ -8,7 +8,7 @@ import { ensureResearchSchema } from "@/db/bootstrap";
 import { archiveRecords, beats, editorialRecommendations, researchActivity, researchCycles, researchSettings, sources, stories } from "@/db/schema";
 import { makeBriefSeeds, slugFromBrief } from "@/lib/research/queries";
 import { archiveLookupIds } from "@/lib/research/source-ids";
-import { generateStoryScript, wordCount } from "@/lib/research/story";
+import { generateStoryScriptUpdateForDossier } from "@/lib/research/story-generation";
 
 export async function autopilotAction(formData: FormData) {
   const enabled = String(formData.get("enabled") ?? "") === "true";
@@ -183,43 +183,13 @@ export async function generateStoryAction(formData: FormData) {
 
   try {
     const refs = await db.select().from(sources).where(eq(sources.storyId, storyId));
-    const script = await generateStoryScript({
-      workingTitle: story.workingTitle,
-      category: story.category,
-      summary: story.summary,
-      storyText: story.storyText,
-      eventDate: story.eventDate,
-      location: story.location,
-      premise: story.premise,
-      narrativeHook: story.narrativeHook,
-      chronology: story.chronology ?? [],
-      keyFacts: story.keyFacts ?? [],
-      conflicts: story.conflicts ?? [],
-      unresolvedRisks: story.unresolvedRisks ?? [],
-      outline: story.outline ?? [],
-      claimCitations: story.claimCitations ?? [],
-      sources: refs.map((ref) => ({
-        id: ref.archiveIdentifier ?? ref.id,
-        title: ref.title,
-        date: ref.publicationDate,
-        excerpt: ref.excerpt,
-      })),
-    });
-    await db.update(stories).set({
-      scriptStatus: "ready",
-      scriptHook: script.hook,
-      scriptSegments: script.segments,
-      scriptClosingLine: script.closingLine,
-      scriptDisclaimer: script.disclaimer,
-      scriptWordCount: wordCount(script),
-      scriptGeneratedAt: new Date(),
-      updatedAt: new Date(),
-    }).where(eq(stories.id, storyId));
+    const scriptUpdate = await generateStoryScriptUpdateForDossier(story, refs);
+    await db.update(stories).set(scriptUpdate).where(eq(stories.id, storyId));
     await db.insert(researchActivity).values({
       kind: "story_generated",
       title: "Story script generated",
       detail: `${story.workingTitle} now has a source-grounded narrative script.`,
-      metadata: { storyId, wordCount: wordCount(script) },
+      metadata: { storyId, wordCount: scriptUpdate.scriptWordCount },
     }).catch(() => undefined);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Story generation failed.";
