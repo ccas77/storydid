@@ -4,6 +4,7 @@ import { getDb } from "@/db";
 import { ensureResearchSchema } from "@/db/bootstrap";
 import { beats, researchCycles, stories } from "@/db/schema";
 import { isCompletedStory, uniqueEditorialStories } from "@/lib/research/display";
+import { latestBriefProgress } from "@/lib/research/status";
 import { startResearchBriefAction } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -21,7 +22,7 @@ export default async function Home({ searchParams }: HomeProps) {
   const cycleRows = db ? await db.select().from(researchCycles).orderBy(desc(researchCycles.createdAt)).limit(12).catch(() => []) : [];
   const beatRows = db ? await db.select().from(beats).orderBy(desc(beats.createdAt)).limit(80).catch(() => []) : [];
   const completedStory = uniqueEditorialStories(rawDossierRows.filter(isCompletedStory))[0];
-  const latestBrief = latestBriefProgress(cycleRows, beatRows);
+  const latestBrief = latestBriefProgress(cycleRows, beatRows, rawDossierRows);
 
   return <main className="shell">
     <header className="top">
@@ -64,35 +65,11 @@ export default async function Home({ searchParams }: HomeProps) {
         <h2>{latestBrief.name}</h2>
         <p>{latestBrief.statusText}</p>
       </div>
-      <Link className="secondary result-link" href="/activity">View progress</Link>
+      <Link className="secondary result-link" href={latestBrief.storyHref ?? "/activity"}>
+        {latestBrief.storyHref ? "Open story" : "View progress"}
+      </Link>
     </section> : null}
   </main>;
-}
-
-function latestBriefProgress(
-  cycles: Array<{ beatId: string | null; status: string; currentStage: string; stageState: Record<string, unknown>; createdAt: Date }>,
-  beatRows: Array<{ id: string; name: string; description: string }>,
-) {
-  const beatById = new Map(beatRows.map((beat) => [beat.id, beat]));
-  for (const cycle of cycles) {
-    const beat = cycle.beatId ? beatById.get(cycle.beatId) : undefined;
-    const fromBrief = cycle.stageState?.source === "user_brief" || beat?.description.startsWith("User research brief:");
-    if (!fromBrief) continue;
-    return {
-      name: beat?.name ?? "Research brief",
-      statusText: progressText(cycle.status, cycle.currentStage),
-    };
-  }
-  return undefined;
-}
-
-function progressText(status: string, stage: string) {
-  const stageLabel = stage.replaceAll("_", " ");
-  if (status === "queued") return `Queued · next stage: ${stageLabel}`;
-  if (status === "running") return `Running · current stage: ${stageLabel}`;
-  if (status === "completed") return "Finished · no completed story passed the story gate yet";
-  if (status === "failed") return `Needs attention · stopped during ${stageLabel}`;
-  return `${status} · ${stageLabel}`;
 }
 
 function noticeFromParams(params: Record<string, string | string[] | undefined>) {
