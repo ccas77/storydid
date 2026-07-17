@@ -22,6 +22,7 @@ const evidenceSchema = z.object({
 const dossierSchema = z.object({
   category: z.string(),
   summary: z.string(),
+  storyText: z.string(),
   eventDate: z.string().nullable(),
   location: z.string().nullable(),
   chronology: z.array(z.object({ date: z.string(), event: z.string() })),
@@ -132,10 +133,11 @@ const recommendationItemSchema = {
         {
           type: "object",
           additionalProperties: false,
-          required: ["category", "summary", "eventDate", "location", "chronology", "keyFacts", "conflicts", "titles", "outline"],
+          required: ["category", "summary", "storyText", "eventDate", "location", "chronology", "keyFacts", "conflicts", "titles", "outline"],
           properties: {
             category: { type: "string" },
             summary: { type: "string" },
+            storyText: { type: "string" },
             eventDate: { type: ["string", "null"] },
             location: { type: ["string", "null"] },
             chronology: { type: "array", items: { type: "object", additionalProperties: false, required: ["date", "event"], properties: { date: { type: "string" }, event: { type: "string" } } } },
@@ -179,7 +181,8 @@ export async function buildResearchDecisions(records: ArchiveRecord[]): Promise<
           "Downgrade investigations when the evidence remains thin.",
           "Only recommend stories that could plausibly become a compelling YouTube/Facebook historical narrative.",
           "Every evidence claim must cite supplied source IDs. Never invent facts. Treat newspaper allegations as allegations.",
-          "Create a finished dossier only when confidence and research completeness are both strong."
+          "Create a finished dossier only when confidence and research completeness are both strong.",
+          "For any finished dossier, write storyText as a complete 700-1200 word narrative draft with a beginning, conflict, evidence-backed development, unresolved cautions, and claim-level citation support. Do not use placeholders, process language, or boilerplate."
         ].join(" ")
       },
       { role: "user", content: JSON.stringify(compact) },
@@ -237,6 +240,7 @@ export async function buildResearchDecisions(records: ArchiveRecord[]): Promise<
         dossier: {
           category: dossier.category,
           summary: dossier.summary,
+          storyText: dossier.storyText,
           chronology: dossier.chronology,
           keyFacts: dossier.keyFacts,
           conflicts: dossier.conflicts,
@@ -379,6 +383,7 @@ export async function buildDossiers(records: ArchiveRecord[]): Promise<StoryDoss
       workingTitle: recommendation.workingTitle,
       category: recommendation.dossier?.category ?? "Historical research",
       summary: recommendation.dossier?.summary ?? recommendation.premise,
+      storyText: recommendation.dossier?.storyText ?? "",
       eventDate: recommendation.dossier?.eventDate,
       location: recommendation.dossier?.location,
       scores: {

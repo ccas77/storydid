@@ -5,7 +5,6 @@ import { getDb } from "@/db";
 import { ensureResearchSchema } from "@/db/bootstrap";
 import { sources, stories } from "@/db/schema";
 import { isCitedDossier } from "@/lib/research/display";
-import { buildStoryNarrative } from "@/lib/research/story-narrative";
 
 export const dynamic = "force-dynamic";
 
@@ -17,18 +16,7 @@ export default async function StoryPage({params}:{params:Promise<{id:string}>}) 
   if(!story || !isCitedDossier(story)) notFound();
   const refs = db ? await db.select().from(sources).where(eq(sources.storyId,id)).catch(() => []) : [];
   const beatHref = story.beatId ? `/?highlight=${story.beatId}` : "/";
-  const narrative = buildStoryNarrative({
-    workingTitle: story.workingTitle,
-    summary: story.summary,
-    premise: field(story, "premise"),
-    narrativeHook: field(story, "narrativeHook"),
-    whyOverlooked: field(story, "whyOverlooked"),
-    originalityAssessment: field(story, "originalityAssessment"),
-    keyFacts: story.keyFacts,
-    unresolvedRisks: arrayField(story, "unresolvedRisks"),
-    conflicts: story.conflicts,
-    claimCitations: story.claimCitations,
-  });
+  const narrative = story.storyText?.split(/\n\s*\n/).map((paragraph) => paragraph.trim()).filter(Boolean) ?? [];
 
   return <main className="shell">
     <div className="detail-nav">

@@ -48,6 +48,7 @@ export const stories = pgTable("stories", {
   workingTitle: text("working_title").notNull(),
   category: text("category").notNull(),
   summary: text("summary").notNull(),
+  storyText: text("story_text"),
   eventDate: text("event_date"),
   location: text("location"),
   status: storyStatus("status").default("candidate").notNull(),

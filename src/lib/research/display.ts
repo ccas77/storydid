@@ -10,6 +10,7 @@ export function isCitedDossier(item: {
   confidenceScore: number;
   researchCompleteness: number;
   claimCitations: unknown;
+  storyText?: string | null;
   workingTitle?: string;
   summary?: string;
   premise?: string | null;
@@ -20,6 +21,7 @@ export function isCitedDossier(item: {
     item.researchCompleteness >= 45 &&
     citationCount(item.claimCitations) > 0 &&
     substantiveClaimCount(item.claimCitations) >= 2 &&
+    isFinishedStoryText(item.storyText) &&
     hasDevelopedStoryMaterial(item) &&
     isStoryLike(item);
 }
@@ -88,6 +90,17 @@ function isSubstantiveClaim(value: string) {
   if (genericClaimPattern.test(text)) return false;
   if (/^the .+ around \d{4}/.test(text)) return false;
   return narrativeCuePattern.test(text);
+}
+
+function isFinishedStoryText(value: string | null | undefined) {
+  if (!value) return false;
+  const text = value.replace(/\s+/g, " ").trim();
+  const paragraphs = value.split(/\n\s*\n/).filter((paragraph) => paragraph.trim().length >= 120);
+  if (text.length < 700) return false;
+  if (paragraphs.length < 4) return false;
+  if (genericClaimPattern.test(text.toLowerCase())) return false;
+  if (!narrativeCuePattern.test(text.toLowerCase())) return false;
+  return true;
 }
 
 const archiveContainerPattern = /\b(cia reading room|pages? georgia pages?|anthology|literatures of|jprs id|arrangements for address|retirement dinner|daily press \d{4}|telegraph \d{4}|mail \d{4}|degrees north)\b/;

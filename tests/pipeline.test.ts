@@ -7,7 +7,7 @@ import { makeBriefSeeds } from "../src/lib/research/queries";
 import { assessDossierReadiness } from "../src/lib/research/readiness";
 import { prepareDossierDraft } from "../src/lib/research/dossier";
 
-test("pipeline can advance a research brief into a cited dossier draft", () => {
+test("pipeline does not promote evidence-only readiness into a completed story", () => {
   const seeds = makeBriefSeeds("factory explosion inquest testimony in Ohio");
   assert.ok(seeds.some((seed) => seed.includes("factory explosion")));
   assert.ok(seeds.some((seed) => seed.split(" ").length <= 3));
@@ -69,9 +69,5 @@ test("pipeline can advance a research brief into a cited dossier draft", () => {
     readiness,
   });
 
-  assert.ok(dossier);
-  assert.equal(dossier.story.status, "ready");
-  assert.equal(dossier.recommendation.status, "dossier_ready");
-  assert.ok(dossier.story.claimCitations.every((claim) => claim.sourceIds.length >= 2));
-  assert.ok(dossier.recommendation.strongestEvidence.every((claim) => claim.sourceIds.includes("loc:dayton-explosion-inquest")));
+  assert.equal(dossier, undefined);
 });

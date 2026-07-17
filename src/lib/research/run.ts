@@ -461,6 +461,7 @@ async function persistRecommendations(runId: string | undefined, recommendations
         workingTitle: recommendation.workingTitle,
         category: recommendation.dossier.category,
         summary: recommendation.dossier.summary,
+        storyText: recommendation.dossier.storyText,
         eventDate: recommendation.dossier.eventDate,
         location: recommendation.dossier.location,
         status: "ready",

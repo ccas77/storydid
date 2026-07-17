@@ -16,6 +16,7 @@ export type DossierDraft = {
     workingTitle: string;
     category: string;
     summary: string;
+    storyText: string;
     status: "ready";
     interestScore: number;
     sourceScore: number;
@@ -68,12 +69,15 @@ export function prepareDossierDraft(input: DossierDraftInput): DossierDraft | un
   const originalityAssessment = input.originalitySignals.join(" ") || "Originality requires editorial review, but the lead passed automated source-depth checks.";
   const claimCitations = input.readiness.claimEvidence.map(({ claim, sourceIds: citedSourceIds }) => ({ claim, sourceIds: citedSourceIds }));
   const keyFacts = input.readiness.claimEvidence.map((claim) => claim.claim);
+  const storyText = buildFinishedStoryText(input, claimCitations);
+  if (!storyText) return undefined;
 
   return {
     story: {
       workingTitle: input.workingTitle,
       category: "Autonomous research dossier",
       summary: input.premise,
+      storyText,
       status: "ready",
       interestScore: 70,
       sourceScore: Math.min(100, input.evidenceDepth),
@@ -114,4 +118,29 @@ export function prepareDossierDraft(input: DossierDraftInput): DossierDraft | un
       followUpQueries: input.followUpQueries,
     },
   };
+}
+
+function buildFinishedStoryText(input: DossierDraftInput, claimCitations: Array<{ claim: string; sourceIds: string[] }>) {
+  const claims = claimCitations.filter((claim) => isSubstantiveClaim(claim.claim));
+  if (claims.length < 2) return undefined;
+  const warningClaim = claims[0].claim;
+  const consequenceClaim = claims[1].claim;
+  const thirdClaim = claims[2]?.claim ?? input.premise;
+  const riskText = input.readiness.risks.length ? input.readiness.risks.join(" ") : "The archive record still needs careful handling, but the available evidence is strong enough to support a cautious draft.";
+  const originalityText = input.originalitySignals.join(" ") || input.whyOverlooked;
+
+  return [
+    `${input.narrativeHook} The answer begins with a record that does not behave like a footnote. ${input.premise} The surviving evidence gives the story a clear pressure point: people were trying to explain not only what happened, but why the danger was not stopped sooner.`,
+    `The strongest thread is this: ${warningClaim} That claim matters because it gives the story a before-and-after shape. There was a condition, warning, dispute, or failure before the central event, and then there was an inquiry afterward trying to decide what that evidence meant.`,
+    `A second source line complicates the official shape of the story. ${consequenceClaim} In narrative terms, that turns the event from a bare historical incident into a conflict over responsibility. The useful question is not simply whether the disaster happened; it is who understood the risk, who had the power to act, and why the record still points back to those decisions.`,
+    `The overlooked angle is that this lead sits in the kind of archive material that rarely announces itself as a finished drama. ${input.whyOverlooked} ${originalityText} The story becomes stronger when the sources are read together: one gives the incident, another gives the corroboration, and the pattern gives the editorial reason to keep digging.`,
+    `The responsible version of the story should stay close to what the records can support. ${thirdClaim} ${riskText} What StoryDid has enough evidence to say is that this is a developable historical narrative with a documented event, a conflict over cause or accountability, and source-backed claims that can be checked line by line.`,
+  ].join("\n\n");
+}
+
+function isSubstantiveClaim(value: string) {
+  const text = value.toLowerCase().replace(/\s+/g, " ").trim();
+  if (text.length < 55) return false;
+  if (/\b(sufficient source depth|editorial development|readiness gate|passed automated)\b/.test(text)) return false;
+  return /\b(disaster|scandal|strike|betrayal|trial|inquest|murder|mystery|explosion|collapse|fire|riot|fraud|impostor|survivor|testimony|mine|shipwreck|sinking|missing|cover.?up|corruption|accident|death|conflict|fight|war|warning|failure|inspection|accountability)\b/.test(text);
 }

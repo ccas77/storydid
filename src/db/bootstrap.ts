@@ -55,6 +55,7 @@ const statements = [
     working_title text NOT NULL,
     category text NOT NULL,
     summary text NOT NULL,
+    story_text text,
     event_date text,
     location text,
     status story_status NOT NULL DEFAULT 'candidate',
@@ -79,6 +80,7 @@ const statements = [
     updated_at timestamp with time zone NOT NULL DEFAULT now()
   )`,
   `ALTER TABLE stories ADD COLUMN IF NOT EXISTS beat_id uuid REFERENCES beats(id) ON DELETE SET NULL`,
+  `ALTER TABLE stories ADD COLUMN IF NOT EXISTS story_text text`,
   `ALTER TABLE stories ADD COLUMN IF NOT EXISTS premise text`,
   `ALTER TABLE stories ADD COLUMN IF NOT EXISTS narrative_hook text`,
   `ALTER TABLE stories ADD COLUMN IF NOT EXISTS why_overlooked text`,

@@ -13,6 +13,7 @@ export type StoryDossier = {
   workingTitle: string;
   category: string;
   summary: string;
+  storyText: string;
   eventDate?: string;
   location?: string;
   scores: { interest: number; sources: number; competition: number; confidence: number };
@@ -60,6 +61,7 @@ export type EditorialRecommendation = {
   dossier?: {
     category: string;
     summary: string;
+    storyText: string;
     eventDate?: string;
     location?: string;
     chronology: Array<{ date: string; event: string }>;
