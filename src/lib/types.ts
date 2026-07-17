@@ -25,6 +25,37 @@ export type StoryDossier = {
   sourceIds: string[];
 };
 
+export type StoryScriptSegment = {
+  heading: string;
+  narration: string;
+  sourceIds: string[];
+};
+
+export type StoryScript = {
+  hook: string;
+  segments: StoryScriptSegment[];
+  closingLine: string;
+  disclaimer: string;
+};
+
+export type StoryScriptInput = {
+  workingTitle: string;
+  category?: string | null;
+  summary?: string | null;
+  storyText?: string | null;
+  eventDate?: string | null;
+  location?: string | null;
+  premise?: string | null;
+  narrativeHook?: string | null;
+  chronology?: Array<{ date: string; event: string }> | null;
+  keyFacts?: string[] | null;
+  conflicts?: string[] | null;
+  unresolvedRisks?: string[] | null;
+  outline?: Array<{ heading: string; notes: string }> | null;
+  claimCitations?: Array<{ claim: string; sourceIds: string[] }> | null;
+  sources: Array<{ id: string; title: string; date?: string | null; excerpt?: string | null }>;
+};
+
 export type EditorialScorecard = {
   narrativeTension: number;
   sourceStrength: number;

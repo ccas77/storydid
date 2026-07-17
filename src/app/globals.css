@@ -715,6 +715,75 @@ li {
   line-height: 1.55;
 }
 
+.script-panel {
+  margin: 30px 0;
+  padding: 24px;
+  border: 2px solid var(--line-strong);
+  background: #fffdf9;
+}
+
+.script-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 18px;
+}
+
+.script-head h2 {
+  margin: 0;
+  font-size: 30px;
+}
+
+.script {
+  display: grid;
+  gap: 18px;
+}
+
+.script-hook,
+.script-closing {
+  margin: 0;
+  color: var(--ink);
+  font-family: var(--font-serif);
+  font-size: 24px;
+  line-height: 1.45;
+}
+
+.script-segment {
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.script-segment h3 {
+  margin: 0 0 8px;
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+
+.script-segment p {
+  max-width: 760px;
+  margin: 0;
+  color: var(--ink);
+  font-family: var(--font-serif);
+  font-size: 21px;
+  line-height: 1.58;
+}
+
+.script-cites {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 9px;
+}
+
+.script-note {
+  margin: 0;
+  color: var(--muted);
+}
+
 .dossier-actions {
   display: flex;
   flex-wrap: wrap;
@@ -836,6 +905,7 @@ code {
 
   .top,
   .recommendation-top,
+  .script-head,
   .control-panel,
   .brief-queue,
   .progress-panel,

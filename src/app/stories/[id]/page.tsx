@@ -5,6 +5,8 @@ import { getDb } from "@/db";
 import { ensureResearchSchema } from "@/db/bootstrap";
 import { sources, stories } from "@/db/schema";
 import { isCitedDossier } from "@/lib/research/display";
+import { generateStoryAction } from "@/app/actions";
+import type { StoryScriptSegment } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -28,13 +30,15 @@ export default async function StoryPage({params}:{params:Promise<{id:string}>}) 
       <h1>{story.workingTitle}</h1>
       <p className="lede">{story.summary}</p>
       <div className="dossier-actions">
-        <a className="primary" href="#story">Read the story</a>
+        <a className="primary" href="#generated-story">Read story script</a>
+        <a className="secondary" href="#story">Read research narrative</a>
         <a className="secondary" href="#claims">Check citations</a>
         <a className="secondary" href="#sources">Source links</a>
         <Link className="secondary" href={beatHref}>Back to recommendations</Link>
       </div>
       <div className="scores"><Score n={story.interestScore} label="human interest"/><Score n={story.sourceScore} label="sources"/><Score n={story.competitionScore} label="originality"/><Score n={story.confidenceScore} label="confidence"/></div>
 
+      <StoryScriptPanel story={story} refs={refs} />
       <StorySection paragraphs={narrative} />
       {field(story, "premise") ? <Section title="Premise"><p>{field(story, "premise")}</p></Section> : null}
       {field(story, "narrativeHook") ? <Section title="Narrative hook"><p>{field(story, "narrativeHook")}</p></Section> : null}
@@ -52,9 +56,55 @@ export default async function StoryPage({params}:{params:Promise<{id:string}>}) 
   </main>;
 }
 
+function StoryScriptPanel({
+  story,
+  refs,
+}: {
+  story: typeof stories.$inferSelect;
+  refs: Array<{ id: string; archiveIdentifier: string | null; title: string; url: string; publicationDate: string | null }>;
+}) {
+  const status = field<string>(story, "scriptStatus", "none");
+  const segments = scriptSegments(field(story, "scriptSegments", []));
+  const ready = status === "ready" && field(story, "scriptHook") && segments.length > 0;
+  const label = ready ? "Regenerate story" : "Generate story";
+
+  return <section className="script-panel" id="generated-story">
+    <div className="script-head">
+      <div>
+        <p className="eyebrow">Generated story</p>
+        <h2>{ready ? "Source-grounded script" : "No story script generated yet"}</h2>
+      </div>
+      <form action={generateStoryAction}>
+        <input type="hidden" name="storyId" value={story.id} />
+        <button className="primary" type="submit">{label}</button>
+      </form>
+    </div>
+    {status === "generating" ? <p className="script-note">Story generation is running. Refresh in a moment.</p> : null}
+    {status === "failed" ? <p className="script-note warning">Story generation failed. The activity trail has the error, and you can try again.</p> : null}
+    {ready ? <div className="script">
+      <p className="script-hook">{field(story, "scriptHook")}</p>
+      {segments.map((segment, index) => <section className="script-segment" key={`${segment.heading}-${index}`}>
+        <h3>{segment.heading}</h3>
+        <p>{segment.narration}</p>
+        <CitationLinks sourceIds={segment.sourceIds} refs={refs} />
+      </section>)}
+      {field(story, "scriptClosingLine") ? <p className="script-closing">{field(story, "scriptClosingLine")}</p> : null}
+      {field(story, "scriptDisclaimer") ? <p className="script-note">{field(story, "scriptDisclaimer")}</p> : null}
+    </div> : status !== "generating" && status !== "failed" ? <p className="script-note">Generate a finished story script from this dossier. It will use only saved source records and will reject invented citations.</p> : null}
+  </section>;
+}
+
+function CitationLinks({ sourceIds, refs }: { sourceIds: string[]; refs: Array<{ id: string; archiveIdentifier: string | null; title: string; url: string }> }) {
+  if (!sourceIds.length) return null;
+  return <div className="script-cites">{sourceIds.map((sourceId) => {
+    const ref = findRef(refs, sourceId);
+    return ref ? <a className="cite" key={sourceId} href={ref.url} target="_blank" rel="noreferrer">[{ref.title}]</a> : null;
+  })}</div>;
+}
+
 function StorySection({ paragraphs }: { paragraphs: string[] }) {
   return <section className="story-body" id="story">
-    <p className="eyebrow">Story</p>
+    <p className="eyebrow">Research narrative</p>
     {paragraphs.map((paragraph) => <p key={paragraph}>{paragraph}</p>)}
   </section>;
 }
@@ -83,7 +133,7 @@ function ClaimCitations({ value, refs }: { value: unknown; refs: Array<{ archive
   if (!claims.length) return null;
   return <Section title="Claim-level citations" id="claims">
     <ol>{claims.map((claim, index) => <li key={index}>{claim.claim} {claim.sourceIds.map((sourceId) => {
-      const ref = refs.find((item) => item.archiveIdentifier === sourceId || item.archiveIdentifier === stripSourcePrefix(sourceId));
+      const ref = findRef(refs, sourceId);
       return ref ? <a className="cite" key={sourceId} href={ref.url} target="_blank" rel="noreferrer">[{ref.title}]</a> : <span className="cite" key={sourceId}>[{sourceId}]</span>;
     })}</li>)}</ol>
   </Section>;
@@ -107,6 +157,25 @@ function field<T>(value: unknown, key: string, fallback?: T) {
 function arrayField(value: unknown, key: string) {
   const found = field<unknown[]>(value, key, []);
   return Array.isArray(found) ? found.filter((item): item is string => typeof item === "string") : [];
+}
+
+function scriptSegments(value: unknown): StoryScriptSegment[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    if (!item || typeof item !== "object") return [];
+    const record = item as Record<string, unknown>;
+    const sourceIds = Array.isArray(record.sourceIds) ? record.sourceIds.filter((id): id is string => typeof id === "string") : [];
+    return typeof record.heading === "string" && typeof record.narration === "string" ? [{
+      heading: record.heading,
+      narration: record.narration,
+      sourceIds,
+    }] : [];
+  });
+}
+
+function findRef(refs: Array<{ id?: string; archiveIdentifier: string | null; title: string; url: string }>, sourceId: string) {
+  const stripped = stripSourcePrefix(sourceId);
+  return refs.find((item) => item.archiveIdentifier === sourceId || item.archiveIdentifier === stripped || item.id === sourceId);
 }
 
 function stripSourcePrefix(sourceId: string) {
