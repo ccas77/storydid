@@ -3,7 +3,7 @@ import { desc } from "drizzle-orm";
 import { getDb } from "@/db";
 import { ensureResearchSchema } from "@/db/bootstrap";
 import { beats, researchCycles, stories } from "@/db/schema";
-import { isCitedDossier, uniqueEditorialStories } from "@/lib/research/display";
+import { isCompletedStory, uniqueEditorialStories } from "@/lib/research/display";
 import { startResearchBriefAction } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -20,7 +20,7 @@ export default async function Home({ searchParams }: HomeProps) {
   const rawDossierRows = db ? await db.select().from(stories).orderBy(desc(stories.createdAt)).limit(50).catch(() => []) : [];
   const cycleRows = db ? await db.select().from(researchCycles).orderBy(desc(researchCycles.createdAt)).limit(12).catch(() => []) : [];
   const beatRows = db ? await db.select().from(beats).orderBy(desc(beats.createdAt)).limit(80).catch(() => []) : [];
-  const completedStory = uniqueEditorialStories(rawDossierRows.filter(isCitedDossier))[0];
+  const completedStory = uniqueEditorialStories(rawDossierRows.filter(isCompletedStory))[0];
   const latestBrief = latestBriefProgress(cycleRows, beatRows);
 
   return <main className="shell">

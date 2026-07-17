@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { isCitedDossier, uniqueEditorialStories } from "../src/lib/research/display";
+import { isCitedDossier, isCompletedStory, uniqueEditorialStories } from "../src/lib/research/display";
 
 const cited = {
   confidenceScore: 100,
@@ -14,6 +14,15 @@ const cited = {
   claimCitations: [
     { claim: "Witness testimony said ignored boiler warnings preceded the factory explosion and shaped the inquest.", sourceIds: ["loc:one"] },
     { claim: "A second report documented disputed safety inspections after the disaster and identified accountability questions.", sourceIds: ["ia:two"] },
+  ],
+  scriptStatus: "ready",
+  scriptHook: "The warning came before the blast, and that is what made the inquest impossible to ignore.",
+  scriptSegments: [
+    {
+      heading: "Cold open",
+      narration: "The factory explosion story begins before the explosion itself, with boiler warnings that witnesses later described as ignored. Those warnings gave the inquest its dramatic question: whether the danger was known before the blast and whether anyone had the power to stop it.",
+      sourceIds: ["loc:one"],
+    },
   ],
 };
 
@@ -83,6 +92,24 @@ test("isCitedDossier keeps developed story-like historical leads", () => {
       "The surviving accounts give the story a conflict between official safety claims and what witnesses said happened.",
     ],
   }), true);
+});
+
+test("isCompletedStory requires a generated cited script", () => {
+  const developed = {
+    ...cited,
+    workingTitle: "The Factory Explosion Inquest",
+    summary: "A factory explosion inquest exposed ignored boiler warnings and a dispute over safety inspections.",
+    premise: "A factory disaster, witness testimony, and disputed inspections raised accountability questions.",
+    keyFacts: [
+      "Witness testimony said ignored boiler warnings preceded the factory explosion and shaped the inquest.",
+      "A second report documented disputed safety inspections after the disaster and identified accountability questions.",
+      "The surviving accounts give the story a conflict between official safety claims and what witnesses said happened.",
+    ],
+  };
+
+  assert.equal(isCompletedStory(developed), true);
+  assert.equal(isCompletedStory({ ...developed, scriptStatus: "none", scriptHook: null, scriptSegments: [] }), false);
+  assert.equal(isCompletedStory({ ...developed, scriptSegments: [{ heading: "Opening", narration: "Too short.", sourceIds: [] }] }), false);
 });
 
 test("uniqueEditorialStories deduplicates repeated story titles", () => {

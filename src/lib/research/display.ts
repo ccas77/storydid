@@ -26,6 +26,14 @@ export function isCitedDossier(item: {
     isStoryLike(item);
 }
 
+export function isCompletedStory(item: Parameters<typeof isCitedDossier>[0] & {
+  scriptStatus?: string | null;
+  scriptHook?: string | null;
+  scriptSegments?: unknown;
+}) {
+  return isCitedDossier(item) && hasReadyStoryScript(item);
+}
+
 export function uniqueEditorialStories<T extends { workingTitle: string; summary: string }>(items: T[]) {
   const seen = new Set<string>();
   return items.filter((item) => {
@@ -33,6 +41,20 @@ export function uniqueEditorialStories<T extends { workingTitle: string; summary
     if (!key || seen.has(key)) return false;
     seen.add(key);
     return true;
+  });
+}
+
+function hasReadyStoryScript(item: { scriptStatus?: string | null; scriptHook?: string | null; scriptSegments?: unknown }) {
+  if (item.scriptStatus !== "ready") return false;
+  if (!item.scriptHook || item.scriptHook.replace(/\s+/g, " ").trim().length < 40) return false;
+  if (!Array.isArray(item.scriptSegments)) return false;
+  return item.scriptSegments.some((segment) => {
+    if (!segment || typeof segment !== "object") return false;
+    const record = segment as Record<string, unknown>;
+    return typeof record.narration === "string" &&
+      record.narration.replace(/\s+/g, " ").trim().length >= 120 &&
+      Array.isArray(record.sourceIds) &&
+      record.sourceIds.some((sourceId) => typeof sourceId === "string");
   });
 }
 

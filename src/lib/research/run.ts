@@ -16,6 +16,7 @@ import { prepareDossierDraft } from "./dossier";
 import { compareClaimableCycles } from "./cycle-claim";
 import { archiveLookupIds } from "./source-ids";
 import { isRelevantFollowUp } from "./follow-up";
+import { generateStoryScript, wordCount } from "./story";
 
 const DOSSIER_CONFIDENCE_THRESHOLD = 70;
 const DOSSIER_COMPLETENESS_THRESHOLD = 72;
@@ -351,13 +352,14 @@ async function runDossierReadinessStage(cycle: CycleRow) {
       ...dossierDraft.story,
     }).returning();
     await attachSourcesFromArchiveRecords(story.id, sourceIds);
+    const scriptGenerated = await generateAndPersistStoryScript(cycle, story);
     const [recommendation] = await db.insert(editorialRecommendations).values({
       cycleId: cycle.id,
       beatId: cycle.beatId,
       storyId: story.id,
       ...dossierDraft.recommendation,
     }).returning();
-    await logActivity(cycle, "dossier", "Finished dossier generated", `${investigation.workingTitle} passed the readiness gate.`, { storyId: story.id, recommendationId: recommendation.id, readinessScore: readiness.score });
+    await logActivity(cycle, "dossier", "Finished dossier generated", `${investigation.workingTitle} passed the readiness gate.`, { storyId: story.id, recommendationId: recommendation.id, readinessScore: readiness.score, scriptGenerated });
     dossiersCreated += 1;
   }
 
@@ -549,6 +551,54 @@ async function attachSourcesFromArchiveRecords(storyId: string, sourceIds: strin
     excerpt: record.description,
     primarySource: true,
   }))).catch(() => undefined);
+}
+
+async function generateAndPersistStoryScript(cycle: CycleRow, story: typeof stories.$inferSelect) {
+  const db = getDb();
+  if (!db) return false;
+  await db.update(stories).set({ scriptStatus: "generating", updatedAt: new Date() }).where(eq(stories.id, story.id));
+  try {
+    const refs = await db.select().from(sources).where(eq(sources.storyId, story.id));
+    const script = await generateStoryScript({
+      workingTitle: story.workingTitle,
+      category: story.category,
+      summary: story.summary,
+      storyText: story.storyText,
+      eventDate: story.eventDate,
+      location: story.location,
+      premise: story.premise,
+      narrativeHook: story.narrativeHook,
+      chronology: story.chronology ?? [],
+      keyFacts: story.keyFacts ?? [],
+      conflicts: story.conflicts ?? [],
+      unresolvedRisks: story.unresolvedRisks ?? [],
+      outline: story.outline ?? [],
+      claimCitations: story.claimCitations ?? [],
+      sources: refs.map((ref) => ({
+        id: ref.archiveIdentifier ?? ref.id,
+        title: ref.title,
+        date: ref.publicationDate,
+        excerpt: ref.excerpt,
+      })),
+    });
+    await db.update(stories).set({
+      scriptStatus: "ready",
+      scriptHook: script.hook,
+      scriptSegments: script.segments,
+      scriptClosingLine: script.closingLine,
+      scriptDisclaimer: script.disclaimer,
+      scriptWordCount: wordCount(script),
+      scriptGeneratedAt: new Date(),
+      updatedAt: new Date(),
+    }).where(eq(stories.id, story.id));
+    await logActivity(cycle, "story_generated", "Story script generated", `${story.workingTitle} now has a source-grounded narrative script.`, { storyId: story.id, wordCount: wordCount(script) });
+    return true;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Story generation failed.";
+    await db.update(stories).set({ scriptStatus: "failed", updatedAt: new Date() }).where(eq(stories.id, story.id));
+    await logActivity(cycle, "story_generation_failed", "Story generation failed", message, { storyId: story.id });
+    return false;
+  }
 }
 
 function evidenceSourceId(record: ArchiveRecord) {
