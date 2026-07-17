@@ -6,6 +6,7 @@ import { ensureResearchSchema } from "@/db/bootstrap";
 import { sources, stories } from "@/db/schema";
 import { isCitedDossier } from "@/lib/research/display";
 import { generateStoryAction } from "@/app/actions";
+import { buildPublishReadyStory } from "@/lib/research/publishable-story";
 import type { StoryScriptSegment } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -30,7 +31,7 @@ export default async function StoryPage({params}:{params:Promise<{id:string}>}) 
       <h1>{story.workingTitle}</h1>
       <p className="lede">{story.summary}</p>
       <div className="dossier-actions">
-        <a className="primary" href="#generated-story">Read story script</a>
+        <a className="primary" href="#generated-story">Read full story</a>
         <a className="secondary" href="#story">Read research narrative</a>
         <a className="secondary" href="#claims">Check citations</a>
         <a className="secondary" href="#sources">Source links</a>
@@ -67,12 +68,20 @@ function StoryScriptPanel({
   const segments = scriptSegments(field(story, "scriptSegments", []));
   const ready = status === "ready" && field(story, "scriptHook") && segments.length > 0;
   const label = ready ? "Regenerate story" : "Generate story";
+  const manuscript = ready ? buildPublishReadyStory({
+    title: story.workingTitle,
+    hook: field(story, "scriptHook", "") ?? "",
+    segments,
+    closingLine: field(story, "scriptClosingLine", ""),
+    disclaimer: field(story, "scriptDisclaimer", ""),
+    refs,
+  }) : undefined;
 
   return <section className="script-panel" id="generated-story">
     <div className="script-head">
       <div>
-        <p className="eyebrow">Generated story</p>
-        <h2>{ready ? "Source-grounded script" : "No story script generated yet"}</h2>
+        <p className="eyebrow">Full story</p>
+        <h2>{ready ? "Ready for publishing" : "No story generated yet"}</h2>
       </div>
       <form action={generateStoryAction}>
         <input type="hidden" name="storyId" value={story.id} />
@@ -81,25 +90,22 @@ function StoryScriptPanel({
     </div>
     {status === "generating" ? <p className="script-note">Story generation is running. Refresh in a moment.</p> : null}
     {status === "failed" ? <p className="script-note warning">Story generation failed. The activity trail has the error, and you can try again.</p> : null}
-    {ready ? <div className="script">
-      <p className="script-hook">{field(story, "scriptHook")}</p>
-      {segments.map((segment, index) => <section className="script-segment" key={`${segment.heading}-${index}`}>
-        <h3>{segment.heading}</h3>
-        <p>{segment.narration}</p>
-        <CitationLinks sourceIds={segment.sourceIds} refs={refs} />
+    {manuscript ? <article className="manuscript" aria-label="Publish-ready story">
+      {manuscript.body.map((item, index) => <section className={`manuscript-block ${item.kind}`} key={`${item.kind}-${index}`}>
+        {item.heading ? <h3>{item.heading}</h3> : null}
+        <p>{item.text} {item.citations.map((label) => <ManuscriptCitation key={label} label={label} sources={manuscript.sources} />)}</p>
       </section>)}
-      {field(story, "scriptClosingLine") ? <p className="script-closing">{field(story, "scriptClosingLine")}</p> : null}
-      {field(story, "scriptDisclaimer") ? <p className="script-note">{field(story, "scriptDisclaimer")}</p> : null}
-    </div> : status !== "generating" && status !== "failed" ? <p className="script-note">Generate a finished story script from this dossier. It will use only saved source records and will reject invented citations.</p> : null}
+      {manuscript.sources.length ? <section className="manuscript-sources">
+        <h3>Sources</h3>
+        <ol>{manuscript.sources.map((source) => <li key={source.label}><a href={source.url} target="_blank" rel="noreferrer">[{source.label}] {source.title}</a>{source.publicationDate ? `, ${source.publicationDate}` : ""}</li>)}</ol>
+      </section> : null}
+    </article> : status !== "generating" && status !== "failed" ? <p className="script-note">Generate a finished story from this dossier. It will use only saved source records and will reject invented citations.</p> : null}
   </section>;
 }
 
-function CitationLinks({ sourceIds, refs }: { sourceIds: string[]; refs: Array<{ id: string; archiveIdentifier: string | null; title: string; url: string }> }) {
-  if (!sourceIds.length) return null;
-  return <div className="script-cites">{sourceIds.map((sourceId) => {
-    const ref = findRef(refs, sourceId);
-    return ref ? <a className="cite" key={sourceId} href={ref.url} target="_blank" rel="noreferrer">[{ref.title}]</a> : null;
-  })}</div>;
+function ManuscriptCitation({ label, sources }: { label: string; sources: Array<{ label: string; title: string; url: string }> }) {
+  const source = sources.find((item) => item.label === label);
+  return source ? <a className="cite" href={source.url} target="_blank" rel="noreferrer">[{label}]</a> : <span className="cite">[{label}]</span>;
 }
 
 function StorySection({ paragraphs }: { paragraphs: string[] }) {

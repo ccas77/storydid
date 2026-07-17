@@ -784,6 +784,64 @@ li {
   color: var(--muted);
 }
 
+.manuscript {
+  display: grid;
+  gap: 18px;
+  padding-top: 8px;
+}
+
+.manuscript-block {
+  max-width: 780px;
+}
+
+.manuscript-block h3,
+.manuscript-sources h3 {
+  margin: 0 0 8px;
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+
+.manuscript-block p {
+  margin: 0;
+  color: var(--ink);
+  font-family: var(--font-serif);
+  font-size: 22px;
+  line-height: 1.58;
+}
+
+.manuscript-block.hook p,
+.manuscript-block.closing p {
+  font-size: 25px;
+  line-height: 1.45;
+}
+
+.manuscript-block.note {
+  margin-top: 4px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.manuscript-block.note p {
+  color: var(--muted);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.manuscript-sources {
+  margin-top: 10px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.manuscript-sources ol {
+  margin: 0;
+  padding-left: 22px;
+}
+
 .dossier-actions {
   display: flex;
   flex-wrap: wrap;
