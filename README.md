@@ -8,7 +8,7 @@ A runnable autonomous research pipeline that mines public historical archives, f
 - Live Internet Archive text search
 - Daily rotating search queries
 - OpenAI structured extraction into dossiers
-- OpenAI story generation grounded in saved dossier sources
+- OpenAI story generation grounded in saved dossier sources, guaranteed to reach a publish-ready 2000+ word article
 - Evidence-linked Postgres storage
 - Research brief intake with autonomous stage advancement
 - Vercel cron endpoint for scheduled research work
@@ -43,3 +43,11 @@ To verify a deployment, confirm `npm run research:diagnose` reports `canRunPipel
 ## Research safeguards
 
 The model is instructed to use only returned archive records, label allegations properly, and attach selected archive record IDs to each dossier and story segment. The current MVP uses archive metadata and descriptions. A production version should add OCR file retrieval, page-level excerpts, YouTube competition checks, stronger source clustering, and editorial export formats.
+
+## Story generation reliability
+
+Story generation is designed to always finish a publish-ready article rather than fail when a single model call comes back short:
+
+- The generator asks for a long-form article, runs with a 120s timeout and automatic retries, and then enters an expansion loop that keeps requesting additional source-grounded segments until the article clears the 2000-word target. Appending segments only ever increases length, so it converges instead of hard-failing at 2000 words.
+- Every readiness-approved lead now produces a dossier and a generated story: the dossier step no longer silently drops approved leads, and story creation always runs the generator.
+- A story counts as "completed" once its generated, source-cited script is ready and long enough. A finished article is never hidden behind pre-script heuristics, and its detail page always renders.

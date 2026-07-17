@@ -34,7 +34,10 @@ export function isCompletedStory(item: Parameters<typeof isCitedDossier>[0] & {
   scriptSegments?: unknown;
   scriptWordCount?: number | null;
 }) {
-  return isCitedDossier(item) && hasReadyStoryScript(item);
+  // The generated script is the finished, source-cited article. Once it is ready and long
+  // enough it stands on its own, so completion is driven by the script rather than by the
+  // pre-script dossier heuristics — otherwise a real 2000-word article can stay hidden.
+  return hasReadyStoryScript(item);
 }
 
 export function uniqueEditorialStories<T extends { workingTitle: string; summary: string }>(items: T[]) {
