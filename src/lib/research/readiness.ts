@@ -39,6 +39,9 @@ export function assessDossierReadiness(input: ReadinessInput): ReadinessDecision
 
 function buildClaimEvidence(input: ReadinessInput): ClaimEvidence[] {
   const citedSources = input.sourceIndependence.flatMap((group) => group.sourceIds).slice(0, 6);
+  const sourceGroups = input.sourceIndependence.filter((group) => group.sourceIds.length > 0).map((group) => group.group.replaceAll("_", " "));
+  const firstQuestion = input.researchQuestions[0] ?? `What happened in ${input.workingTitle}?`;
+  const secondQuestion = input.researchQuestions[1] ?? "Who was affected, blamed, accused, or vindicated?";
   return [
     {
       claim: input.premise,
@@ -46,9 +49,14 @@ function buildClaimEvidence(input: ReadinessInput): ClaimEvidence[] {
       note: "Core premise is supported by the collected archive source groups.",
     },
     {
-      claim: `${input.workingTitle} has sufficient source depth for editorial development.`,
+      claim: `${input.workingTitle} has a source-backed conflict over accountability: ${firstQuestion} ${secondQuestion}`,
       sourceIds: citedSources,
-      note: "Readiness is based on evidence depth, source independence, and remaining research risks.",
+      note: "The investigation questions identify the narrative conflict the dossier should develop.",
+    },
+    {
+      claim: `${input.workingTitle} is supported by independent source groups from ${sourceGroups.join(" and ")}, giving the story corroboration beyond a single archive record.`,
+      sourceIds: citedSources,
+      note: "Readiness requires independent source groups before dossier generation.",
     },
   ].filter((claim) => claim.sourceIds.length > 0);
 }

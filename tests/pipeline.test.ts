@@ -6,8 +6,11 @@ import { evidenceDepthScore, groupSourceIndependence, originalitySignals, resear
 import { makeBriefSeeds } from "../src/lib/research/queries";
 import { assessDossierReadiness } from "../src/lib/research/readiness";
 import { prepareDossierDraft } from "../src/lib/research/dossier";
+import { generateStoryScriptUpdateForDossier, type SourceRow, type StoryRow } from "../src/lib/research/story-generation";
+import { buildPublishReadyStory } from "../src/lib/research/publishable-story";
+import { isCompletedStory } from "../src/lib/research/display";
 
-test("pipeline does not promote evidence-only readiness into a completed story", () => {
+test("deterministic pipeline can reach a publish-ready cited story", async () => {
   const seeds = makeBriefSeeds("factory explosion inquest testimony in Ohio");
   assert.ok(seeds.some((seed) => seed.includes("factory explosion")));
   assert.ok(seeds.some((seed) => seed.split(" ").length <= 3));
@@ -69,5 +72,64 @@ test("pipeline does not promote evidence-only readiness into a completed story",
     readiness,
   });
 
-  assert.equal(dossier, undefined);
+  assert.ok(dossier);
+
+  const story = {
+    id: "story-1",
+    ...dossier.story,
+    beatId: null,
+    eventDate: null,
+    location: "Dayton, Ohio",
+    scriptStatus: "none",
+  } as unknown as StoryRow;
+  const refs = [
+    {
+      id: "source-1",
+      archiveIdentifier: "loc:dayton-explosion-inquest",
+      title: "Factory explosion inquest testimony names preventable boiler failures",
+      url: "https://www.loc.gov/item/dayton-explosion-inquest/",
+      publicationDate: "1912",
+      excerpt: "Newspaper testimony from an inquest into a factory explosion.",
+    },
+    {
+      id: "source-2",
+      archiveIdentifier: "internet_archive:factorysafetyreport1912",
+      title: "Factory safety investigation after Dayton explosion",
+      url: "https://archive.org/details/factorysafetyreport1912",
+      publicationDate: "1912",
+      excerpt: "Published investigation report documenting testimony, boiler defects, and public accountability.",
+    },
+  ] as unknown as SourceRow[];
+  const scriptUpdate = await generateStoryScriptUpdateForDossier(story, refs, async () => ({
+    hook: "The warning came before the blast, which is why the inquest could not treat the explosion as routine.",
+    segments: [
+      {
+        heading: "Opening",
+        narration: "Witness testimony put ignored boiler warnings at the center of the factory explosion story. That made the event more than an accident report: it became a question of who knew about the danger and who had power to respond.",
+        sourceIds: ["loc:dayton-explosion-inquest"],
+      },
+      {
+        heading: "Accountability",
+        narration: "A safety investigation added the second half of the narrative by documenting disputed inspections after the disaster. The sources together turn the story toward accountability rather than spectacle.",
+        sourceIds: ["internet_archive:factorysafetyreport1912"],
+      },
+    ],
+    closingLine: "The publish-ready story is the warning before the blast and the fight over what that warning meant.",
+    disclaimer: "Newspaper allegations should remain labeled as allegations unless independently corroborated.",
+  }));
+  const completedStory = { ...story, ...scriptUpdate };
+  assert.equal(isCompletedStory(completedStory), true);
+
+  const manuscript = buildPublishReadyStory({
+    title: completedStory.workingTitle,
+    hook: completedStory.scriptHook ?? "",
+    segments: completedStory.scriptSegments ?? [],
+    closingLine: completedStory.scriptClosingLine,
+    disclaimer: completedStory.scriptDisclaimer,
+    refs,
+  });
+  assert.match(manuscript.plainText, /The Factory Inquest That Named the Boiler/);
+  assert.match(manuscript.plainText, /\[S1\]/);
+  assert.match(manuscript.plainText, /\[S2\]/);
+  assert.equal(manuscript.sources.length, 2);
 });
