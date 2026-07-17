@@ -70,7 +70,6 @@ export function prepareDossierDraft(input: DossierDraftInput): DossierDraft | un
   const claimCitations = input.readiness.claimEvidence.map(({ claim, sourceIds: citedSourceIds }) => ({ claim, sourceIds: citedSourceIds }));
   const keyFacts = input.readiness.claimEvidence.map((claim) => claim.claim);
   const storyText = buildFinishedStoryText(input, claimCitations);
-  if (!storyText) return undefined;
 
   return {
     story: {
@@ -121,11 +120,15 @@ export function prepareDossierDraft(input: DossierDraftInput): DossierDraft | un
 }
 
 function buildFinishedStoryText(input: DossierDraftInput, claimCitations: Array<{ claim: string; sourceIds: string[] }>) {
-  const claims = claimCitations.filter((claim) => isSubstantiveClaim(claim.claim));
-  if (claims.length < 2) return undefined;
-  const warningClaim = claims[0].claim;
-  const consequenceClaim = claims[1].claim;
-  const thirdClaim = claims[2]?.claim ?? input.premise;
+  // A lead only reaches this point after passing the readiness gate, so it is already
+  // vouched for. Prefer substantive claims, but never drop an approved lead for lack of
+  // them: fall back to every cited claim, then to the premise/hook, so a dossier is always
+  // produced and the downstream story generator gets something to develop.
+  const substantive = claimCitations.filter((claim) => isSubstantiveClaim(claim.claim));
+  const claims = (substantive.length >= 2 ? substantive : claimCitations).map((claim) => claim.claim);
+  const warningClaim = claims[0] ?? input.narrativeHook;
+  const consequenceClaim = claims[1] ?? input.premise;
+  const thirdClaim = claims[2] ?? input.premise;
   const riskText = input.readiness.risks.length ? input.readiness.risks.join(" ") : "The archive record still needs careful handling, but the available evidence is strong enough to support a cautious draft.";
   const originalityText = input.originalitySignals.join(" ") || input.whyOverlooked;
 

@@ -17,7 +17,7 @@ export default async function StoryPage({params}:{params:Promise<{id:string}>}) 
   const db = getDb();
   if (db) await ensureResearchSchema();
   const story = db ? (await db.select().from(stories).where(eq(stories.id,id)).limit(1).catch(() => []))[0] : undefined;
-  if(!story || !isCitedDossier(story)) notFound();
+  if(!story || (!isCitedDossier(story) && !isCompletedStory(story))) notFound();
   const refs = db ? await db.select().from(sources).where(eq(sources.storyId,id)).catch(() => []) : [];
   const beatHref = story.beatId ? `/?highlight=${story.beatId}` : "/";
   const narrative = story.storyText?.split(/\n\s*\n/).map((paragraph) => paragraph.trim()).filter(Boolean) ?? [];
