@@ -9,6 +9,7 @@ import { archiveRecords, beats, editorialRecommendations, researchActivity, rese
 import { makeBriefSeeds, slugFromBrief } from "@/lib/research/queries";
 import { archiveLookupIds } from "@/lib/research/source-ids";
 import { generateStoryScriptUpdateForDossier } from "@/lib/research/story-generation";
+import { runBriefToStory } from "@/lib/research/run";
 
 export async function autopilotAction(formData: FormData) {
   const enabled = String(formData.get("enabled") ?? "") === "true";
@@ -74,15 +75,26 @@ export async function startResearchBriefAction(formData: FormData) {
     cycleId: cycle.id,
     beatId: beat.id,
     kind: "brief_queued",
-    title: "Research brief queued",
-    detail: "The brief was saved as a beat and queued for the scheduler to advance one stage at a time.",
+    title: "Research brief started",
+    detail: "The brief was researched from public archives right away.",
     metadata: { prompt, seeds },
   }).catch(() => undefined);
 
+  // Run the whole pipeline for this brief now instead of leaving it for the slow
+  // background scheduler, so the writer gets a finished story (or a clear answer) at once.
+  let result: { storyId?: string; status: string } = { status: "error" };
+  try {
+    result = await runBriefToStory(cycle.id);
+  } catch (error) {
+    console.error("[storydid:action] brief run failed", { cycleId: cycle.id, error });
+  }
+
   revalidatePath("/");
   revalidatePath("/activity");
-  console.info("[storydid:action] brief queued", { slug, cycleId: cycle.id });
-  redirect(`/?notice=brief-queued&beat=${encodeURIComponent(slug)}`);
+  revalidatePath("/stories");
+  console.info("[storydid:action] brief run finished", { slug, cycleId: cycle.id, status: result.status });
+  if (result.storyId) redirect(`/stories/${result.storyId}`);
+  redirect("/?notice=brief-no-story");
 }
 
 export async function recommendationAction(formData: FormData) {
