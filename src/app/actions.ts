@@ -5,11 +5,44 @@ import { redirect } from "next/navigation";
 import { eq, inArray } from "drizzle-orm";
 import { getDb } from "@/db";
 import { ensureResearchSchema } from "@/db/bootstrap";
-import { archiveRecords, beats, editorialRecommendations, researchActivity, researchCycles, researchSettings, sources, stories } from "@/db/schema";
+import { archiveRecords, articles, beats, editorialRecommendations, researchActivity, researchCycles, researchSettings, sources, stories } from "@/db/schema";
 import { makeBriefSeeds, slugFromBrief } from "@/lib/research/queries";
 import { archiveLookupIds } from "@/lib/research/source-ids";
 import { generateStoryScriptUpdateForDossier } from "@/lib/research/story-generation";
 import { runBriefToStory } from "@/lib/research/run";
+import { researchAndWrite } from "@/lib/write-article";
+
+export async function writeArticleAction(formData: FormData) {
+  const topic = String(formData.get("topic") ?? "").replace(/\s+/g, " ").trim();
+  const db = getDb();
+  if (!db) redirect("/?notice=missing-db");
+  if (topic.length < 8) redirect("/?notice=topic-too-short");
+
+  await ensureResearchSchema();
+  let result: Awaited<ReturnType<typeof researchAndWrite>>;
+  try {
+    result = await researchAndWrite(topic);
+  } catch (error) {
+    console.error("[storydid] article generation crashed", { topic, error });
+    redirect("/?notice=write-failed");
+  }
+
+  if (!result.ok) redirect(`/?notice=${result.reason === "no-sources" ? "no-sources" : "write-failed"}`);
+
+  const [article] = await db.insert(articles).values({
+    topic,
+    title: result.title,
+    hook: result.script.hook,
+    segments: result.script.segments,
+    closingLine: result.script.closingLine,
+    disclaimer: result.script.disclaimer,
+    wordCount: result.wordCount,
+    sources: result.sources,
+  }).returning();
+
+  revalidatePath("/");
+  redirect(`/a/${article.id}`);
+}
 
 export async function autopilotAction(formData: FormData) {
   const enabled = String(formData.get("enabled") ?? "") === "true";

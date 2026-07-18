@@ -17,6 +17,18 @@ async function runBootstrap() {
 }
 
 const statements = [
+  `CREATE TABLE IF NOT EXISTS articles (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    topic text NOT NULL,
+    title text NOT NULL,
+    hook text NOT NULL DEFAULT '',
+    segments jsonb NOT NULL DEFAULT '[]'::jsonb,
+    closing_line text NOT NULL DEFAULT '',
+    disclaimer text NOT NULL DEFAULT '',
+    word_count integer NOT NULL DEFAULT 0,
+    sources jsonb NOT NULL DEFAULT '[]'::jsonb,
+    created_at timestamptz NOT NULL DEFAULT now()
+  )`,
   `DO $$ BEGIN CREATE TYPE story_status AS ENUM ('candidate', 'researching', 'ready', 'rejected', 'published'); EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
   `DO $$ BEGIN CREATE TYPE recommendation_status AS ENUM ('recommended', 'developing', 'angle_requested', 'investigate_further', 'dismissed', 'dossier_ready'); EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
   `DO $$ BEGIN CREATE TYPE cluster_status AS ENUM ('candidate', 'merged', 'rejected', 'researching', 'recommended', 'dossier_ready'); EXCEPTION WHEN duplicate_object THEN NULL; END $$`,

@@ -242,3 +242,17 @@ export const researchActivity = pgTable("research_activity", {
   metadata: jsonb("metadata").$type<Record<string, unknown>>().default({}),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull()
 });
+
+// The simple app: one row per generated article. No pipeline, no beats, no gates.
+export const articles = pgTable("articles", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  topic: text("topic").notNull(),
+  title: text("title").notNull(),
+  hook: text("hook").notNull().default(""),
+  segments: jsonb("segments").$type<Array<{ heading: string; narration: string; sourceIds: string[] }>>().default([]).notNull(),
+  closingLine: text("closing_line").notNull().default(""),
+  disclaimer: text("disclaimer").notNull().default(""),
+  wordCount: integer("word_count").notNull().default(0),
+  sources: jsonb("sources").$type<Array<{ id: string; title: string; url: string; date?: string | null }>>().default([]).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull()
+});
