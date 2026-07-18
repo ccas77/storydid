@@ -100,6 +100,16 @@ export function looksLikeStory(item: { workingTitle?: string; summary?: string; 
   return isStoryLike(item);
 }
 
+// Conservative: true only for obvious archive containers, routine files, and dated page
+// dumps. Unlike isStoryLike it does NOT flag a title merely for lacking a narrative cue,
+// so it is safe to use as a deletion filter.
+export function isArchiveJunk(title: string | null | undefined) {
+  const raw = title ?? "";
+  const text = raw.toLowerCase();
+  if (!text.trim()) return true;
+  return archiveContainerPattern.test(text) || routineInstitutionPattern.test(text) || dateOnlyTitlePattern.test(raw);
+}
+
 function isStoryLike(item: { workingTitle?: string; summary?: string; premise?: string | null }) {
   const text = `${item.workingTitle ?? ""} ${item.summary ?? ""} ${item.premise ?? ""}`.toLowerCase();
   if (!text.trim()) return false;

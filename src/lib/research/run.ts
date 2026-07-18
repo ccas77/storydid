@@ -13,7 +13,7 @@ import { buildInvestigationPlans, buildResearchDecisions } from "./openai";
 import { evidenceDepthScore, groupSourceIndependence, shouldDowngradeInvestigation } from "./investigation";
 import { assessDossierReadiness } from "./readiness";
 import { prepareDossierDraft } from "./dossier";
-import { looksLikeStory } from "./display";
+import { looksLikeStory, isArchiveJunk, isCompletedStory } from "./display";
 import { compareClaimableCycles } from "./cycle-claim";
 import { archiveLookupIds } from "./source-ids";
 import { isRelevantFollowUp } from "./follow-up";
@@ -31,6 +31,7 @@ export async function runResearch() {
 
   await ensureResearchSchema();
   await ensureBeats();
+  await cleanupExistingStories();
   if (!await isAutopilotEnabled()) return { ok: true, status: "paused" };
   const existingCycle = await claimExistingCycle();
   if (existingCycle) return await runCycleStage(existingCycle);
@@ -41,6 +42,51 @@ export async function runResearch() {
   const scheduledCycle = await scheduleNextCycle();
   if (!scheduledCycle) return { ok: true, status: "idle" };
   return await runCycleStage(scheduledCycle);
+}
+
+// One-time, self-limiting cleanup of rows created before dedupe/junk guards existed.
+// Deletes obvious archive-container / page-dump titles and collapses exact-duplicate
+// titles to the single best row. Runs each cycle but does nothing once the data is clean.
+async function cleanupExistingStories() {
+  const db = getDb();
+  if (!db) return;
+  const rows = await db.select().from(stories).catch(() => [] as Array<typeof stories.$inferSelect>);
+  if (!rows.length) return;
+
+  const remove = new Set<string>();
+  for (const story of rows) {
+    if (isArchiveJunk(story.workingTitle)) remove.add(story.id);
+  }
+
+  const byTitle = new Map<string, Array<typeof stories.$inferSelect>>();
+  for (const story of rows) {
+    if (remove.has(story.id)) continue;
+    const key = story.workingTitle.trim().toLowerCase();
+    byTitle.set(key, [...(byTitle.get(key) ?? []), story]);
+  }
+  for (const group of byTitle.values()) {
+    if (group.length < 2) continue;
+    const [, ...extras] = group.slice().sort(rankStory);
+    for (const story of extras) remove.add(story.id);
+  }
+
+  if (!remove.size) return;
+  await db.delete(stories).where(inArray(stories.id, Array.from(remove))).catch(() => undefined);
+  await db.insert(researchActivity).values({
+    kind: "cleanup",
+    title: "Cleaned up old stories",
+    detail: `Removed ${remove.size} duplicate or non-story rows left over from earlier runs.`,
+    metadata: { removed: remove.size },
+  }).catch(() => undefined);
+}
+
+// Best row first: a completed story beats an unfinished one, then more words, then newer.
+function rankStory(a: typeof stories.$inferSelect, b: typeof stories.$inferSelect) {
+  const completed = Number(isCompletedStory(b)) - Number(isCompletedStory(a));
+  if (completed !== 0) return completed;
+  const words = (b.scriptWordCount ?? 0) - (a.scriptWordCount ?? 0);
+  if (words !== 0) return words;
+  return (b.createdAt?.getTime() ?? 0) - (a.createdAt?.getTime() ?? 0);
 }
 
 async function runCycleStage(cycle: CycleRow) {

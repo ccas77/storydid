@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { isCitedDossier, isCompletedStory, uniqueEditorialStories } from "../src/lib/research/display";
+import { isArchiveJunk, isCitedDossier, isCompletedStory, uniqueEditorialStories } from "../src/lib/research/display";
 import { PUBLISH_READY_MIN_WORDS, PUBLISH_READY_TARGET_WORDS } from "../src/lib/research/story-length";
 
 const cited = {
@@ -113,6 +113,16 @@ test("isCompletedStory requires a generated cited 2000-word script", () => {
   assert.equal(isCompletedStory({ ...developed, scriptStatus: "none", scriptHook: null, scriptSegments: [] }), false);
   assert.equal(isCompletedStory({ ...developed, scriptSegments: [{ heading: "Opening", narration: "Too short.", sourceIds: [] }] }), false);
   assert.equal(isCompletedStory({ ...developed, scriptWordCount: PUBLISH_READY_MIN_WORDS - 1 }), false);
+});
+
+test("isArchiveJunk flags containers and page dumps but not real stories", () => {
+  assert.equal(isArchiveJunk("1913 October 25 Atlanta Constitution 15 Pages Georgia"), true);
+  assert.equal(isArchiveJunk("CIA Reading Room cia-rdp80: THE CIA WILL PAY"), true);
+  assert.equal(isArchiveJunk("The Literatures Of Colonial America : An Anthology"), true);
+  assert.equal(isArchiveJunk(""), true);
+  // Real stories are kept, even a plain title with no obvious "narrative" keyword.
+  assert.equal(isArchiveJunk("The Mather Mine Disaster"), false);
+  assert.equal(isArchiveJunk("The Hindenburg"), false);
 });
 
 test("uniqueEditorialStories deduplicates repeated story titles", () => {
