@@ -22,15 +22,16 @@ export type ReadinessDecision = {
 
 export function assessDossierReadiness(input: ReadinessInput): ReadinessDecision {
   const independentGroups = input.sourceIndependence.filter((group) => group.sourceIds.length > 0);
+  const totalSources = new Set(input.sourceIndependence.flatMap((group) => group.sourceIds)).size;
   const risks = [
     input.downgradeReason ? input.downgradeReason : undefined,
-    input.evidenceDepth < 72 ? "Evidence depth is below the dossier threshold." : undefined,
-    independentGroups.length < 2 ? "Fewer than two independent source groups support the premise." : undefined,
+    input.evidenceDepth < 45 ? "Evidence depth is still too thin for a dossier." : undefined,
+    independentGroups.length < 1 || totalSources < 2 ? "The premise needs at least two supporting archive sources." : undefined,
     input.researchQuestions.length < 3 ? "The investigation does not yet have enough answered research questions." : undefined,
   ].filter((risk): risk is string => Boolean(risk));
   const score = Math.min(100, Math.round(input.evidenceDepth * 0.65 + Math.min(independentGroups.length, 3) * 12 + Math.min(input.researchQuestions.length, 4) * 4));
   return {
-    ready: risks.length === 0 && score >= 72,
+    ready: risks.length === 0 && score >= 45,
     score,
     risks,
     claimEvidence: buildClaimEvidence(input),

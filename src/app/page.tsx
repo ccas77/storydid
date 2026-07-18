@@ -21,7 +21,7 @@ export default async function Home({ searchParams }: HomeProps) {
   const rawDossierRows = db ? await db.select().from(stories).orderBy(desc(stories.createdAt)).limit(50).catch(() => []) : [];
   const cycleRows = db ? await db.select().from(researchCycles).orderBy(desc(researchCycles.createdAt)).limit(12).catch(() => []) : [];
   const beatRows = db ? await db.select().from(beats).orderBy(desc(beats.createdAt)).limit(80).catch(() => []) : [];
-  const completedStory = uniqueEditorialStories(rawDossierRows.filter(isCompletedStory))[0];
+  const completedStories = uniqueEditorialStories(rawDossierRows.filter(isCompletedStory)).slice(0, 6);
   const latestBrief = latestBriefProgress(cycleRows, beatRows, rawDossierRows);
 
   return <main className="shell">
@@ -54,11 +54,22 @@ export default async function Home({ searchParams }: HomeProps) {
       </form>
     </section>
 
-    <section className="single-result" aria-label="Completed story">
-      {completedStory ? <Link className="primary result-link" href={`/stories/${completedStory.id}`}>Read completed story</Link> : <p>No completed story yet.</p>}
+    <section className="section-head">
+      <div>
+        <p className="eyebrow">Finished stories</p>
+        <h1>Ready to read</h1>
+      </div>
       <Link className="secondary result-link" href="/stories">Browse all dossiers</Link>
-      <Link className="secondary result-link" href="/activity">Research activity</Link>
     </section>
+    {completedStories.length ? <section className="grid">
+      {completedStories.map((story) => <Link className="card" href={`/stories/${story.id}`} key={story.id}>
+        <div className="meta"><span className="pill ok">Completed story</span></div>
+        <h2>{story.workingTitle}</h2>
+        <p>{story.summary}</p>
+      </Link>)}
+    </section> : <div className="empty">
+      <p>No finished story yet. Submit a brief above, or open <Link href="/stories">Dossiers</Link> to see what is being researched.</p>
+    </div>}
 
     {latestBrief ? <section className="progress-panel" aria-label="Latest research progress">
       <div>

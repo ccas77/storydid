@@ -36,8 +36,9 @@ export function isCompletedStory(item: Parameters<typeof isCitedDossier>[0] & {
 }) {
   // The generated script is the finished, source-cited article. Once it is ready and long
   // enough it stands on its own, so completion is driven by the script rather than by the
-  // pre-script dossier heuristics — otherwise a real 2000-word article can stay hidden.
-  return hasReadyStoryScript(item);
+  // pre-script dossier heuristics — but the lead must still look like a real story, so
+  // archive-container / page-dump junk never surfaces as a completed article.
+  return hasReadyStoryScript(item) && isStoryLike(item);
 }
 
 export function uniqueEditorialStories<T extends { workingTitle: string; summary: string }>(items: T[]) {
@@ -93,6 +94,10 @@ function hasDevelopedStoryMaterial(item: { keyFacts?: unknown; chronology?: unkn
     return typeof event === "string" && isSubstantiveClaim(event);
   }) : [];
   return keyFacts.length >= 3 || chronology.length >= 2;
+}
+
+export function looksLikeStory(item: { workingTitle?: string; summary?: string; premise?: string | null }) {
+  return isStoryLike(item);
 }
 
 function isStoryLike(item: { workingTitle?: string; summary?: string; premise?: string | null }) {

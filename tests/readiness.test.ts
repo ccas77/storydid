@@ -18,7 +18,7 @@ test("assessDossierReadiness approves sufficiently sourced investigations", () =
   assert.ok(decision.claimEvidence.length >= 2);
 });
 
-test("assessDossierReadiness blocks weak source independence", () => {
+test("assessDossierReadiness blocks a single-source lead", () => {
   const decision = assessDossierReadiness({
     workingTitle: "One-source mystery",
     premise: "A thin lead based on one source.",
@@ -28,5 +28,17 @@ test("assessDossierReadiness blocks weak source independence", () => {
   });
 
   assert.equal(decision.ready, false);
-  assert.match(decision.risks.join(" "), /Fewer than two/);
+  assert.match(decision.risks.join(" "), /two supporting archive sources/);
+});
+
+test("assessDossierReadiness approves two sources from a single archive", () => {
+  const decision = assessDossierReadiness({
+    workingTitle: "The strike that split the county",
+    premise: "Two newspaper reports document a betrayed labor strike.",
+    evidenceDepth: 50,
+    sourceIndependence: [{ group: "library_of_congress", sourceIds: ["loc:1", "loc:2"] }],
+    researchQuestions: ["What happened?", "Who was harmed?", "What corroborates it?"],
+  });
+
+  assert.equal(decision.ready, true);
 });
