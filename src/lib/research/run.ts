@@ -13,6 +13,7 @@ import { buildInvestigationPlans, buildResearchDecisions } from "./openai";
 import { evidenceDepthScore, groupSourceIndependence, shouldDowngradeInvestigation } from "./investigation";
 import { assessDossierReadiness } from "./readiness";
 import { prepareDossierDraft } from "./dossier";
+import { looksLikeStory } from "./display";
 import { compareClaimableCycles } from "./cycle-claim";
 import { archiveLookupIds } from "./source-ids";
 import { isRelevantFollowUp } from "./follow-up";
@@ -375,6 +376,24 @@ async function runDossierReadinessStage(cycle: CycleRow) {
       }
       downgraded += 1;
       await logActivity(cycle, "downgraded", "Investigation failed readiness gate", `${investigation.workingTitle}: ${readiness.risks.join(" ")}`, { investigationId: investigation.id, readinessScore: readiness.score });
+      continue;
+    }
+
+    // Skip archive-container / newspaper-page-dump titles: they pass evidence checks but are
+    // not real stories, so they should never become a dossier.
+    if (!looksLikeStory({ workingTitle: investigation.workingTitle, summary: investigation.premise, premise: investigation.premise })) {
+      await db.update(researchInvestigations).set({ status: "downgraded", downgradeReason: "The lead is an archive container or page dump, not a story.", updatedAt: new Date() }).where(eq(researchInvestigations.id, investigation.id));
+      downgraded += 1;
+      await logActivity(cycle, "downgraded", "Investigation set aside", `${investigation.workingTitle} looks like an archive container rather than a story.`, { investigationId: investigation.id });
+      continue;
+    }
+
+    // Don't regenerate a story we already have: once a title exists as a story, move on
+    // instead of re-researching and re-writing it every cycle.
+    const [existingStory] = await db.select({ id: stories.id }).from(stories).where(eq(stories.workingTitle, investigation.workingTitle)).limit(1);
+    if (existingStory) {
+      await db.update(researchInvestigations).set({ status: "ready_for_dossier", downgradeReason: null, updatedAt: new Date() }).where(eq(researchInvestigations.id, investigation.id));
+      await logActivity(cycle, "duplicate", "Story already exists", `${investigation.workingTitle} was already generated, so this cycle did not recreate it.`, { investigationId: investigation.id, storyId: existingStory.id });
       continue;
     }
 
