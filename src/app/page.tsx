@@ -6,8 +6,10 @@ import { beats, researchCycles, stories } from "@/db/schema";
 import { isCompletedStory, uniqueEditorialStories } from "@/lib/research/display";
 import { latestBriefProgress } from "@/lib/research/status";
 import { startResearchBriefAction } from "./actions";
+import { BriefSubmit } from "@/components/brief-submit";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 300;
 
 type HomeProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
@@ -50,8 +52,9 @@ export default async function Home({ searchParams }: HomeProps) {
       </div>
       <form action={startResearchBriefAction} className="brief-form">
         <textarea name="prompt" minLength={12} required placeholder="Example: labor strike betrayal in Pennsylvania newspapers 1890 1935" />
-        <button className="primary" type="submit">Start research</button>
+        <BriefSubmit />
       </form>
+      <p className="sub">Researching a brief takes about a minute — it searches public archives, checks the evidence, and writes the full story before the page loads.</p>
     </section>
 
     <section className="section-head">
@@ -95,6 +98,14 @@ function noticeFromParams(params: Record<string, string | string[] | undefined>)
       detail: "Its status is shown below. The detailed research log is in Activity.",
       href: "/activity",
       cta: "View progress",
+    };
+  }
+  if (notice === "brief-no-story") {
+    return {
+      tone: "error",
+      eyebrow: "No story this time",
+      title: "The archives didn't yield a strong enough story for that brief.",
+      detail: "Try a more specific, event-driven topic — a named disaster, trial, scandal, or disappearance with a date and place tends to work best.",
     };
   }
   if (notice === "missing-db") {

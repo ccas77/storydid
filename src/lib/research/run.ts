@@ -44,6 +44,35 @@ export async function runResearch() {
   return await runCycleStage(scheduledCycle);
 }
 
+// Drive a single brief's cycle through every stage in one request, so submitting a brief
+// produces a finished story immediately instead of waiting on the 15-minute scheduler.
+// Returns the finished story's id when one was produced.
+export async function runBriefToStory(cycleId: string): Promise<{ storyId?: string; status: string }> {
+  const db = getDb();
+  if (!db) return { status: "no-db" };
+  const [start] = await db.select().from(researchCycles).where(eq(researchCycles.id, cycleId)).limit(1);
+  if (!start) return { status: "missing" };
+  const beatId = start.beatId;
+
+  // Each pass advances one stage: discovery -> candidate_funnel -> deep_research ->
+  // dossier_readiness -> completed. Six passes covers the four stages with headroom.
+  for (let pass = 0; pass < 6; pass += 1) {
+    const [cycle] = await db.select().from(researchCycles).where(eq(researchCycles.id, cycleId)).limit(1);
+    if (!cycle || cycle.status === "completed" || cycle.status === "failed") break;
+    await db.update(researchCycles).set({ status: "running", lockedAt: new Date(), updatedAt: new Date() }).where(eq(researchCycles.id, cycleId));
+    try {
+      await runCycleStage({ ...cycle, status: "running" });
+    } catch {
+      break;
+    }
+  }
+
+  if (!beatId) return { status: "done" };
+  const briefStories = await db.select().from(stories).where(eq(stories.beatId, beatId)).orderBy(desc(stories.createdAt)).catch(() => []);
+  const finished = briefStories.find((story) => isCompletedStory(story)) ?? briefStories[0];
+  return finished ? { storyId: finished.id, status: "story" } : { status: "no-story" };
+}
+
 // One-time, self-limiting cleanup of rows created before dedupe/junk guards existed.
 // Deletes obvious archive-container / page-dump titles and collapses exact-duplicate
 // titles to the single best row. Runs each cycle but does nothing once the data is clean.
