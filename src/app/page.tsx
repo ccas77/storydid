@@ -30,7 +30,7 @@ export default async function Home({ searchParams }: HomeProps) {
         <div className="brand">StoryDid</div>
         <div className="sub">Submit a research brief. Read the completed story when one is ready.</div>
       </div>
-      <nav className="nav"><Link href="/activity">Activity</Link></nav>
+      <nav className="nav"><Link href="/stories">Dossiers</Link> <Link href="/activity">Activity</Link></nav>
     </header>
 
     {notice ? <section className={`notice ${notice.tone}`} role="status" aria-live="polite">
@@ -56,6 +56,7 @@ export default async function Home({ searchParams }: HomeProps) {
 
     <section className="single-result" aria-label="Completed story">
       {completedStory ? <Link className="primary result-link" href={`/stories/${completedStory.id}`}>Read completed story</Link> : <p>No completed story yet.</p>}
+      <Link className="secondary result-link" href="/stories">Browse all dossiers</Link>
       <Link className="secondary result-link" href="/activity">Research activity</Link>
     </section>
 

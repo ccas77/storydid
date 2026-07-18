@@ -514,6 +514,16 @@ p {
   white-space: nowrap;
 }
 
+.pill.ok {
+  border-color: var(--good);
+  color: var(--good);
+}
+
+.pill.warn {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
 .stats {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
