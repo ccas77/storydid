@@ -17,6 +17,12 @@ async function runBootstrap() {
 }
 
 const statements = [
+  `CREATE TABLE IF NOT EXISTS collections (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    theme text NOT NULL,
+    events jsonb NOT NULL DEFAULT '[]'::jsonb,
+    created_at timestamptz NOT NULL DEFAULT now()
+  )`,
   `CREATE TABLE IF NOT EXISTS articles (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     topic text NOT NULL,

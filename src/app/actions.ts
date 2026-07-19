@@ -5,12 +5,79 @@ import { redirect } from "next/navigation";
 import { eq, inArray } from "drizzle-orm";
 import { getDb } from "@/db";
 import { ensureResearchSchema } from "@/db/bootstrap";
-import { archiveRecords, articles, beats, editorialRecommendations, researchActivity, researchCycles, researchSettings, sources, stories } from "@/db/schema";
+import { archiveRecords, articles, beats, collections, editorialRecommendations, researchActivity, researchCycles, researchSettings, sources, stories } from "@/db/schema";
 import { makeBriefSeeds, slugFromBrief } from "@/lib/research/queries";
 import { archiveLookupIds } from "@/lib/research/source-ids";
 import { generateStoryScriptUpdateForDossier } from "@/lib/research/story-generation";
 import { runBriefToStory } from "@/lib/research/run";
 import { researchAndWrite } from "@/lib/write-article";
+import { listEvents } from "@/lib/list-events";
+
+export async function startCollectionAction(formData: FormData) {
+  const theme = String(formData.get("theme") ?? "").replace(/\s+/g, " ").trim();
+  const db = getDb();
+  if (!db) redirect("/?notice=missing-db");
+  if (theme.length < 6) redirect("/?notice=topic-too-short");
+
+  await ensureResearchSchema();
+  let events;
+  try {
+    events = await listEvents(theme);
+  } catch (error) {
+    console.error("[storydid] listing events failed", { theme, error });
+    redirect("/?notice=list-failed");
+  }
+  if (!events.length) redirect("/?notice=no-events");
+
+  const [collection] = await db.insert(collections).values({
+    theme,
+    events: events.map((event) => ({ ...event, articleId: null })),
+  }).returning();
+
+  revalidatePath("/");
+  redirect(`/c/${collection.id}`);
+}
+
+export async function writeEventArticleAction(formData: FormData) {
+  const collectionId = String(formData.get("collectionId") ?? "");
+  const index = Number(formData.get("index") ?? -1);
+  const db = getDb();
+  if (!db) redirect("/?notice=missing-db");
+  if (!collectionId) redirect("/");
+
+  await ensureResearchSchema();
+  const [collection] = await db.select().from(collections).where(eq(collections.id, collectionId)).limit(1);
+  if (!collection) redirect("/");
+  const event = collection.events[index];
+  if (!event) redirect(`/c/${collectionId}`);
+  if (event.articleId) redirect(`/a/${event.articleId}`);
+
+  let result: Awaited<ReturnType<typeof researchAndWrite>>;
+  try {
+    result = await researchAndWrite(event.searchQuery || event.title);
+  } catch (error) {
+    console.error("[storydid] event article generation crashed", { collectionId, index, error });
+    redirect(`/c/${collectionId}?notice=write-failed`);
+  }
+  if (!result.ok) redirect(`/c/${collectionId}?notice=${result.reason === "no-sources" ? "no-sources" : "write-failed"}`);
+
+  const [article] = await db.insert(articles).values({
+    topic: event.title,
+    title: event.title,
+    hook: result.script.hook,
+    segments: result.script.segments,
+    closingLine: result.script.closingLine,
+    disclaimer: result.script.disclaimer,
+    wordCount: result.wordCount,
+    sources: result.sources,
+  }).returning();
+
+  const events = collection.events.map((item, itemIndex) => itemIndex === index ? { ...item, articleId: article.id } : item);
+  await db.update(collections).set({ events }).where(eq(collections.id, collectionId));
+
+  revalidatePath(`/c/${collectionId}`);
+  redirect(`/a/${article.id}`);
+}
 
 export async function writeArticleAction(formData: FormData) {
   const topic = String(formData.get("topic") ?? "").replace(/\s+/g, " ").trim();
