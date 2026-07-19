@@ -1,6 +1,6 @@
 import { searchLibraryOfCongress } from "@/lib/sources/loc";
 import { searchInternetArchive } from "@/lib/sources/internet-archive";
-import { generateStoryScript, wordCount } from "@/lib/research/story";
+import { generateStoryScript, verifyStoryScript, wordCount } from "@/lib/research/story";
 import type { ArchiveRecord, StoryScript } from "@/lib/types";
 
 export type ArticleResult =
@@ -27,8 +27,9 @@ export async function researchAndWrite(topic: string): Promise<ArticleResult> {
   const unique = Array.from(new Map(found.map((record) => [record.url, record])).values()).slice(0, 12);
   if (unique.length < 2) return { ok: false, reason: "no-sources" };
 
+  const validSourceIds = new Set(unique.map(sourceKey));
   try {
-    const script = await generateStoryScript({
+    const draft = await generateStoryScript({
       workingTitle: topic,
       summary: `A researched article about: ${topic}`,
       sources: unique.map((record) => ({
@@ -38,6 +39,8 @@ export async function researchAndWrite(topic: string): Promise<ArticleResult> {
         excerpt: record.description,
       })),
     });
+    // Fact-check / correct the draft before saving (best-effort; falls back to the draft).
+    const script = await verifyStoryScript(draft, topic, validSourceIds);
     return {
       ok: true,
       title: topic,
