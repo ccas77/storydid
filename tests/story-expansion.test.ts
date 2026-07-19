@@ -18,8 +18,12 @@ function words(n: number) {
   return Array.from({ length: n }, () => "boiler").join(" ");
 }
 
-function segment(narrationWords: number, sourceId = "loc:dayton") {
-  return { heading: "Segment", narration: words(narrationWords), sourceIds: [sourceId] };
+// Distinct heading per segment, as a real model produces — so the dedupe-by-heading
+// step keeps them all.
+let seq = 0;
+function seg(narrationWords: number, sourceId = "loc:dayton") {
+  seq += 1;
+  return { heading: `Section ${seq}`, narration: words(narrationWords), sourceIds: [sourceId] };
 }
 
 test("generateStoryScript expands a short draft until it clears the 2000-word target", async () => {
@@ -28,17 +32,15 @@ test("generateStoryScript expands a short draft until it clears the 2000-word ta
   const model: StoryScriptModel = async ({ schemaName }) => {
     if (schemaName === "story_script") {
       scriptCalls += 1;
-      // ~6 short segments: well under 2000 words on the first pass.
       return {
         hook: "The warning came before the blast, and the inquest could not treat it as routine.",
-        segments: Array.from({ length: 6 }, () => segment(120)),
+        segments: Array.from({ length: 6 }, () => seg(120)),
         closingLine: "The published story is the warning before the blast and the fight over what it meant.",
         disclaimer: "Newspaper allegations remain labeled as allegations unless independently corroborated.",
       };
     }
     expansionCalls += 1;
-    // Each expansion round appends more grounded segments.
-    return { segments: Array.from({ length: 2 }, () => segment(200, expansionCalls % 2 === 0 ? "ia:report" : "loc:dayton")) };
+    return { segments: Array.from({ length: 2 }, () => seg(200, expansionCalls % 2 === 0 ? "ia:report" : "loc:dayton")) };
   };
 
   const script = await generateStoryScript(input, model);
@@ -55,13 +57,13 @@ test("generateStoryScript skips expansion when the first draft is already long e
     if (schemaName === "story_script") {
       return {
         hook: "The warning came before the blast, and the inquest could not treat it as routine.",
-        segments: Array.from({ length: 8 }, () => segment(300)),
+        segments: Array.from({ length: 8 }, () => seg(300)),
         closingLine: "The published story is the warning before the blast and the fight over what it meant.",
         disclaimer: "Newspaper allegations remain labeled as allegations unless independently corroborated.",
       };
     }
     expansionCalls += 1;
-    return { segments: [segment(200)] };
+    return { segments: [seg(200)] };
   };
 
   const script = await generateStoryScript(input, model);
@@ -70,22 +72,24 @@ test("generateStoryScript skips expansion when the first draft is already long e
 });
 
 test("generateStoryScript drops invented citations from expansion segments", async () => {
+  let extra = 0;
   const model: StoryScriptModel = async ({ schemaName }) => {
     if (schemaName === "story_script") {
       return {
         hook: "The warning came before the blast, and the inquest could not treat it as routine.",
-        segments: Array.from({ length: 6 }, () => segment(140)),
+        segments: Array.from({ length: 8 }, () => seg(200)),
         closingLine: "The published story is the warning before the blast and the fight over what it meant.",
         disclaimer: "Newspaper allegations remain labeled as allegations unless independently corroborated.",
       };
     }
-    return { segments: [{ heading: "Invented", narration: words(220), sourceIds: ["made-up-source", "ia:report"] }] };
+    extra += 1;
+    return { segments: [{ heading: `Aftermath ${extra}`, narration: words(400), sourceIds: ["made-up-source", "ia:report"] }] };
   };
 
   const script = await generateStoryScript(input, model);
-  const invented = script.segments.flatMap((s) => s.sourceIds).filter((id) => id === "made-up-source");
-  assert.equal(invented.length, 0);
-  assert.ok(script.segments.flatMap((s) => s.sourceIds).includes("ia:report"));
+  const cited = script.segments.flatMap((s) => s.sourceIds);
+  assert.equal(cited.filter((id) => id === "made-up-source").length, 0);
+  assert.ok(cited.includes("ia:report"));
 });
 
 test("generateStoryScript refuses to run without saved sources", async () => {

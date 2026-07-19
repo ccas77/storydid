@@ -43,6 +43,14 @@ export default async function Home({ searchParams }: HomeProps) {
       </div>
       <form action={startCollectionAction} className="brief-form">
         <textarea name="theme" minLength={6} required placeholder="Example: 20th century corporate scandals" />
+        <label className="row-label">How many events?
+          <select name="count" defaultValue="16">
+            <option value="8">8</option>
+            <option value="16">16</option>
+            <option value="24">24</option>
+            <option value="30">30</option>
+          </select>
+        </label>
         <SubmitButton idle="Find the events" pending="Finding real events…" />
       </form>
     </section>
