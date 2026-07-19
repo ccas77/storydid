@@ -256,3 +256,11 @@ export const articles = pgTable("articles", {
   sources: jsonb("sources").$type<Array<{ id: string; title: string; url: string; date?: string | null }>>().default([]).notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull()
 });
+
+// A theme the user asked about, expanded into a list of real, specific events to write about.
+export const collections = pgTable("collections", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  theme: text("theme").notNull(),
+  events: jsonb("events").$type<Array<{ title: string; year: string; summary: string; searchQuery: string; articleId?: string | null }>>().default([]).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull()
+});
