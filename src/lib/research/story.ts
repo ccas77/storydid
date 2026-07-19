@@ -70,13 +70,14 @@ export type StoryScriptModel = (request: {
 }) => Promise<unknown>;
 
 const SYSTEM_PROMPT = [
-  "You are StoryDid's longform narrative editor.",
-  "Turn an approved, source-backed historical dossier into a finished, publish-ready longform article for a general audience.",
-  "Use only the supplied dossier and source records. Never add facts, names, dates, causes, quotes, or motives that are not supported by the input.",
-  "Treat newspaper claims and accusations as allegations unless the dossier proves them independently.",
-  "Follow the dossier outline as the story spine when it exists, and develop each beat with concrete, sourced detail.",
-  "Write immersive, flowing prose in full paragraphs. Do not output links, markdown, bullet lists, headings inside narration, placeholders, or process commentary.",
-  "Every segment must cite one or more supplied source IDs, using only the exact source IDs from the input.",
+  "You are an accomplished narrative-nonfiction writer.",
+  "Write a vivid, accurate, engaging longform article about ONE specific historical event for a smart general reader who has never heard of it and has not yet decided to care.",
+  "Open in the moment — a concrete scene, real people, real stakes — and earn the reader's attention in the first paragraph. Then tell what happened, to whom, why, and why it still matters.",
+  "Write about the EVENT itself. Never write about archives, collections, 'the documentary record', finding aids, or how historians study the event. The reader wants the story, not a description of sources.",
+  "Be historically accurate and specific. You may draw on well-established facts about this event from the historical record. Do not invent quotations, statistics, or names you are not confident are correct; when a precise figure is uncertain, use careful wording.",
+  "The supplied archive records are references that support the article — attach a record's source ID to a section it backs. Sections of well-known general narrative may cite nothing; that is fine.",
+  "Write flowing narrative prose in full paragraphs. Never output links, URLs, markdown, bullet lists, raw citation codes such as '(loc:...)' or 'internet_archive:...', placeholders, or commentary about sources.",
+  "Every section heading names a distinct stage of the story. No two sections may cover the same ground or repeat a heading.",
 ].join(" ");
 
 export async function generateStoryScript(
@@ -97,9 +98,10 @@ export async function generateStoryScript(
       dossier: dossierPayload,
       sources: input.sources,
       instructions: [
-        `Write a complete longform article of at least ${PUBLISH_READY_MIN_WORDS} words (aim for about ${PUBLISH_READY_TARGET_WORDS}, and do not exceed ${PUBLISH_READY_MAX_WORDS}).`,
-        `Produce a cold-open hook, ${MIN_SEGMENTS} or more substantial story segments of roughly 220-320 words each, a closing line, and a short evidence disclaimer.`,
-        "Each segment should advance the narrative rather than restating the previous one.",
+        `Write a complete article of about ${PUBLISH_READY_TARGET_WORDS} words (between ${PUBLISH_READY_MIN_WORDS} and ${PUBLISH_READY_MAX_WORDS}).`,
+        `Open with a gripping hook, then write ${MIN_SEGMENTS} to 11 sections of roughly 200-280 words. Each section is a distinct stage of the story with its own heading; no two may overlap.`,
+        "Assume the reader knows nothing about this event. Lead with the human story and concrete detail; give background only as the story needs it.",
+        "End with a short closing line and, only if a genuine caveat exists, a one-sentence note. Do not list sources or mention the archive.",
       ],
     }),
   });
@@ -148,15 +150,17 @@ async function expandToLength(
           wordCount: words,
         },
         instructions: [
-          `The article is ${words} words but must reach at least ${PUBLISH_READY_MIN_WORDS} words; add roughly ${deficit} more words.`,
-          "Return only NEW segments that continue and deepen the same article using the supplied sources.",
-          "Do not repeat earlier segments or restate the hook. Do not renumber or return existing segments.",
-          "Each new segment must cite one or more exact source IDs from the input.",
+          `The article is ${words} words and should reach about ${PUBLISH_READY_TARGET_WORDS}; add roughly ${deficit} more words.`,
+          "Write only genuinely NEW sections that move the story forward into ground not yet covered — later developments, consequences, specific people, the aftermath, or the legacy.",
+          `Do NOT repeat, paraphrase, or reuse any of these already-written section headings or their topics: ${current.segments.map((segment) => segment.heading).join("; ")}.`,
+          "Keep writing about the event itself, not about sources or archives. Do not restate the hook.",
         ],
       }),
     });
 
-    const extra = sanitizeSegments(expansionSchema.parse(raw).segments, validSourceIds);
+    const seenHeadings = new Set(current.segments.map((segment) => normalizeHeading(segment.heading)));
+    const extra = sanitizeSegments(expansionSchema.parse(raw).segments, validSourceIds)
+      .filter((segment) => !seenHeadings.has(normalizeHeading(segment.heading)));
     if (!extra.length) break;
     current = {
       ...current,
@@ -209,9 +213,16 @@ const defaultStoryModel: StoryScriptModel = async ({ system, user, schemaName, s
 };
 
 export function sanitizeStoryScript(script: StoryScript, validSourceIds: Set<string>): StoryScript {
+  const seen = new Set<string>();
+  const segments = sanitizeSegments(script.segments, validSourceIds).filter((segment) => {
+    const key = normalizeHeading(segment.heading);
+    if (seen.has(key)) return false; // drop duplicate/repeated sections
+    seen.add(key);
+    return true;
+  });
   return {
     hook: cleanText(script.hook),
-    segments: sanitizeSegments(script.segments, validSourceIds),
+    segments,
     closingLine: cleanText(script.closingLine),
     disclaimer: cleanText(script.disclaimer),
   };
@@ -225,6 +236,10 @@ function sanitizeSegments(segments: StoryScriptSegment[], validSourceIds: Set<st
   })).filter((segment) => segment.heading && segment.narration);
 }
 
+function normalizeHeading(value: string) {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+
 export function wordCount(script: StoryScript) {
   return [
     script.hook,
@@ -235,7 +250,15 @@ export function wordCount(script: StoryScript) {
 }
 
 function cleanText(value: string) {
-  return value.replace(/\s+/g, " ").trim();
+  return value
+    // Strip leaked citation codes the model sometimes writes into prose, e.g.
+    // "(loc:http://lccn.loc.gov/...)" or "internet_archive:foo; loc:bar".
+    .replace(/\((?:\s*(?:loc|internet_archive)\s*:[^)]*)\)/gi, " ")
+    .replace(/\b(?:loc|internet_archive)\s*:\s*\S+/gi, " ")
+    .replace(/\(\s*[;,]?\s*\)/g, " ")
+    .replace(/\s+([.,;:])/g, "$1")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function unique(values: string[]) {

@@ -519,6 +519,26 @@ p {
   color: var(--good);
 }
 
+.row-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.row-label select {
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--paper-soft);
+  color: inherit;
+}
+
+.more-row {
+  margin-top: 20px;
+}
+
 .pill.warn {
   border-color: var(--accent);
   color: var(--accent);

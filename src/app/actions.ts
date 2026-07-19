@@ -15,6 +15,7 @@ import { listEvents } from "@/lib/list-events";
 
 export async function startCollectionAction(formData: FormData) {
   const theme = String(formData.get("theme") ?? "").replace(/\s+/g, " ").trim();
+  const count = Number(formData.get("count") ?? 16) || 16;
   const db = getDb();
   if (!db) redirect("/?notice=missing-db");
   if (theme.length < 6) redirect("/?notice=topic-too-short");
@@ -22,7 +23,7 @@ export async function startCollectionAction(formData: FormData) {
   await ensureResearchSchema();
   let events;
   try {
-    events = await listEvents(theme);
+    events = await listEvents(theme, { count });
   } catch (error) {
     console.error("[storydid] listing events failed", { theme, error });
     redirect("/?notice=list-failed");
@@ -36,6 +37,35 @@ export async function startCollectionAction(formData: FormData) {
 
   revalidatePath("/");
   redirect(`/c/${collection.id}`);
+}
+
+export async function moreEventsAction(formData: FormData) {
+  const collectionId = String(formData.get("collectionId") ?? "");
+  const db = getDb();
+  if (!db) redirect("/?notice=missing-db");
+  if (!collectionId) redirect("/");
+
+  await ensureResearchSchema();
+  const [collection] = await db.select().from(collections).where(eq(collections.id, collectionId)).limit(1);
+  if (!collection) redirect("/");
+
+  const existingTitles = collection.events.map((event) => event.title);
+  let more;
+  try {
+    more = await listEvents(collection.theme, { count: 16, exclude: existingTitles });
+  } catch (error) {
+    console.error("[storydid] finding more events failed", { collectionId, error });
+    redirect(`/c/${collectionId}?notice=list-failed`);
+  }
+
+  const seen = new Set(existingTitles.map((title) => title.trim().toLowerCase()));
+  const fresh = more.filter((event) => !seen.has(event.title.trim().toLowerCase())).map((event) => ({ ...event, articleId: null }));
+  if (fresh.length) {
+    await db.update(collections).set({ events: [...collection.events, ...fresh] }).where(eq(collections.id, collectionId));
+  }
+
+  revalidatePath(`/c/${collectionId}`);
+  redirect(`/c/${collectionId}${fresh.length ? "" : "?notice=no-more"}`);
 }
 
 export async function writeEventArticleAction(formData: FormData) {
