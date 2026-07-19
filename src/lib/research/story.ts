@@ -3,11 +3,11 @@ import { z } from "zod";
 import { PUBLISH_READY_MAX_WORDS, PUBLISH_READY_MIN_WORDS, PUBLISH_READY_TARGET_WORDS } from "./story-length";
 import type { StoryScript, StoryScriptInput, StoryScriptSegment } from "@/lib/types";
 
-const MAX_EXPANSION_ROUNDS = 6;
+const MAX_EXPANSION_ROUNDS = 8;
 const STORY_TIMEOUT_MS = 120_000;
 const STORY_MAX_RETRIES = 2;
 const MIN_SEGMENTS = 6;
-const MAX_SEGMENTS = 16;
+const MAX_SEGMENTS = 26;
 
 const segmentSchema = z.object({
   heading: z.string().min(3),
@@ -98,8 +98,8 @@ export async function generateStoryScript(
       dossier: dossierPayload,
       sources: input.sources,
       instructions: [
-        `Write a complete article of about ${PUBLISH_READY_TARGET_WORDS} words (between ${PUBLISH_READY_MIN_WORDS} and ${PUBLISH_READY_MAX_WORDS}).`,
-        `Open with a gripping hook, then write ${MIN_SEGMENTS} to 11 sections of roughly 200-280 words. Each section is a distinct stage of the story with its own heading; no two may overlap.`,
+        `Write the complete story at the length the event genuinely deserves — a large, complex scandal may need ${PUBLISH_READY_TARGET_WORDS}-${PUBLISH_READY_MAX_WORDS} words; a more contained one ${PUBLISH_READY_MIN_WORDS}-2400. Never pad, but do not cut the story short. Write at least ${PUBLISH_READY_MIN_WORDS} words.`,
+        `Open with a gripping hook, then write ${MIN_SEGMENTS} or more sections of roughly 220-300 words. Each section is a distinct stage of the story with its own heading; no two may overlap.`,
         "Assume the reader knows nothing about this event. Lead with the human story and concrete detail; give background only as the story needs it.",
         "End with a short closing line and, only if a genuine caveat exists, a one-sentence note. Do not list sources or mention the archive.",
       ],
@@ -119,9 +119,55 @@ export async function generateStoryScript(
   return script;
 }
 
+const REVIEW_PROMPT = (subject: string) => [
+  `You are a meticulous historian and copy editor reviewing an article about ${subject}.`,
+  "Correct any historical inaccuracy. Remove or soften any specific claim — a number, date, name, place, or quotation — that is not well-established, verifiable history; replace it with accurate, more general wording rather than cutting the narrative.",
+  "Do not add new specific facts, statistics, or quotations, and do not invent anything.",
+  "Keep the engaging narrative voice, keep every section heading, and keep roughly the same length. Do not write about sources or archives.",
+  "Return the corrected article in the same structure, preserving each section's sourceIds array exactly as given.",
+].join(" ");
+
+/**
+ * A second pass that fact-checks and corrects the draft: it fixes inaccuracies and softens
+ * shaky specifics. It is best-effort — on any problem, or if the correction comes back
+ * shorter or uncited, it keeps the original draft so the check can never make things worse.
+ */
+export async function verifyStoryScript(
+  script: StoryScript,
+  subject: string,
+  validSourceIds: Set<string>,
+  model: StoryScriptModel = defaultStoryModel,
+): Promise<StoryScript> {
+  try {
+    const raw = await model({
+      system: REVIEW_PROMPT(subject),
+      schemaName: "story_review",
+      schema: scriptJsonSchema,
+      user: JSON.stringify({ article: script }),
+    });
+    const corrected = reattachCitations(sanitizeStoryScript(scriptSchema.parse(raw), validSourceIds), script);
+    // Accept a modest trim (the check removes shaky specifics) but reject a gutted result.
+    const longEnough = wordCount(corrected) >= Math.round(wordCount(script) * 0.85);
+    const hasCitations = corrected.segments.some((segment) => segment.sourceIds.length > 0);
+    if (corrected.segments.length >= 3 && longEnough && hasCitations) return corrected;
+    return script;
+  } catch {
+    return script;
+  }
+}
+
+// Keep citations if the review pass dropped a section's sourceIds — carry over the
+// original section's citations by position.
+function reattachCitations(corrected: StoryScript, original: StoryScript): StoryScript {
+  return {
+    ...corrected,
+    segments: corrected.segments.map((segment, index) => segment.sourceIds.length ? segment : { ...segment, sourceIds: original.segments[index]?.sourceIds ?? [] }),
+  };
+}
+
 /**
  * Keeps requesting additional source-grounded segments until the article clears the
- * word target. Appending segments only ever increases length, so this converges as
+ * word floor. Appending segments only ever increases length, so this converges as
  * long as the model returns usable content; it stops early if a round adds nothing.
  */
 async function expandToLength(
@@ -134,9 +180,11 @@ async function expandToLength(
   let current = script;
   for (let round = 0; round < MAX_EXPANSION_ROUNDS; round += 1) {
     const words = wordCount(current);
-    if (words >= PUBLISH_READY_TARGET_WORDS || current.segments.length >= MAX_SEGMENTS) break;
+    // Only fill up to the floor — the draft already self-sized to the event, so we don't
+    // pad a well-formed article; we only rescue one that came back short.
+    if (words >= PUBLISH_READY_MIN_WORDS || current.segments.length >= MAX_SEGMENTS) break;
 
-    const deficit = PUBLISH_READY_TARGET_WORDS - words;
+    const deficit = PUBLISH_READY_MIN_WORDS - words;
     const raw = await model({
       system: SYSTEM_PROMPT,
       schemaName: "story_expansion",
@@ -150,7 +198,7 @@ async function expandToLength(
           wordCount: words,
         },
         instructions: [
-          `The article is ${words} words and should reach about ${PUBLISH_READY_TARGET_WORDS}; add roughly ${deficit} more words.`,
+          `The article is ${words} words and should reach at least ${PUBLISH_READY_MIN_WORDS}; add roughly ${deficit} more words.`,
           "Write only genuinely NEW sections that move the story forward into ground not yet covered — later developments, consequences, specific people, the aftermath, or the legacy.",
           `Do NOT repeat, paraphrase, or reuse any of these already-written section headings or their topics: ${current.segments.map((segment) => segment.heading).join("; ")}.`,
           "Keep writing about the event itself, not about sources or archives. Do not restate the hook.",
