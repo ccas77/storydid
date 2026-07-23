@@ -6,6 +6,7 @@ import { ensureResearchSchema } from "@/db/bootstrap";
 import { collections } from "@/db/schema";
 import { moreEventsAction, writeEventArticleAction } from "@/app/actions";
 import { SubmitButton } from "@/components/submit-button";
+import { noticeFrom } from "@/lib/notices";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -64,14 +65,6 @@ export default async function CollectionPage({ params, searchParams }: PageProps
       </form>
     </section>
   </main>;
-}
-
-function noticeFrom(notice: string | undefined) {
-  if (notice === "no-sources") return { tone: "error", eyebrow: "No sources", title: "The archives didn't have enough on that event.", detail: "Try a different event — coverage varies a lot between them." };
-  if (notice === "write-failed") return { tone: "error", eyebrow: "Couldn't finish", title: "Something went wrong while writing that one.", detail: "Please try again in a moment." };
-  if (notice === "no-more") return { tone: "success", eyebrow: "That's the list", title: "No new events to add.", detail: "The model didn't find more distinct events for this theme." };
-  if (notice === "list-failed") return { tone: "error", eyebrow: "Couldn't add more", title: "Something went wrong finding more events.", detail: "Please try again in a moment." };
-  return undefined;
 }
 
 function valueParam(value: string | string[] | undefined) {

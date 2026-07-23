@@ -1,11 +1,10 @@
-import OpenAI from "openai";
 import { z } from "zod";
+import { structuredCall } from "../openai-call";
 import { PUBLISH_READY_MAX_WORDS, PUBLISH_READY_MIN_WORDS, PUBLISH_READY_TARGET_WORDS } from "./story-length";
 import type { StoryScript, StoryScriptInput, StoryScriptSegment } from "@/lib/types";
 
 const MAX_EXPANSION_ROUNDS = 8;
 const STORY_TIMEOUT_MS = 120_000;
-const STORY_MAX_RETRIES = 2;
 const MIN_SEGMENTS = 6;
 const MAX_SEGMENTS = 26;
 
@@ -37,13 +36,16 @@ const segmentJsonSchema = {
   },
 } as const;
 
+// NOTE: no minItems/maxItems in these strict schemas — OpenAI's structured-output
+// validator rejects unsupported array constraints with a 400 on every call. Segment
+// counts are steered by the prompt and enforced by code (slice/dedupe) instead.
 const scriptJsonSchema = {
   type: "object",
   additionalProperties: false,
   required: ["hook", "segments", "closingLine", "disclaimer"],
   properties: {
     hook: { type: "string" },
-    segments: { type: "array", minItems: MIN_SEGMENTS, maxItems: MAX_SEGMENTS, items: segmentJsonSchema },
+    segments: { type: "array", items: segmentJsonSchema },
     closingLine: { type: "string" },
     disclaimer: { type: "string" },
   },
@@ -54,7 +56,7 @@ const expansionJsonSchema = {
   additionalProperties: false,
   required: ["segments"],
   properties: {
-    segments: { type: "array", minItems: 1, maxItems: 6, items: segmentJsonSchema },
+    segments: { type: "array", items: segmentJsonSchema },
   },
 } as const;
 
@@ -238,26 +240,14 @@ function buildDossierPayload(input: StoryScriptInput) {
 }
 
 const defaultStoryModel: StoryScriptModel = async ({ system, user, schemaName, schema }) => {
-  if (!process.env.OPENAI_API_KEY) {
-    throw new Error("OPENAI_API_KEY is not configured; story generation cannot run.");
-  }
-  const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-  const response = await client.responses.create({
-    model: process.env.STORY_MODEL ?? process.env.RESEARCH_MODEL ?? "gpt-5-mini",
-    input: [
-      { role: "system", content: system },
-      { role: "user", content: user },
-    ],
-    text: {
-      format: {
-        type: "json_schema",
-        name: schemaName,
-        strict: true,
-        schema,
-      },
-    },
-  }, { timeout: STORY_TIMEOUT_MS, maxRetries: STORY_MAX_RETRIES });
-  return JSON.parse(response.output_text);
+  return structuredCall({
+    system,
+    user,
+    schemaName,
+    schema,
+    preferredModel: process.env.STORY_MODEL ?? process.env.RESEARCH_MODEL,
+    timeoutMs: STORY_TIMEOUT_MS,
+  });
 };
 
 export function sanitizeStoryScript(script: StoryScript, validSourceIds: Set<string>): StoryScript {

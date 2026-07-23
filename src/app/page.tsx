@@ -5,6 +5,7 @@ import { ensureResearchSchema } from "@/db/bootstrap";
 import { articles, collections } from "@/db/schema";
 import { startCollectionAction } from "./actions";
 import { SubmitButton } from "@/components/submit-button";
+import { noticeFrom } from "@/lib/notices";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -92,16 +93,6 @@ export default async function Home({ searchParams }: HomeProps) {
       <p>Nothing yet. Type a theme above and press <b>Find the events</b> to get started.</p>
     </div> : null}
   </main>;
-}
-
-function noticeFrom(notice: string | undefined) {
-  if (notice === "no-events") return { tone: "error", eyebrow: "No events", title: "Couldn't find clear events for that theme.", detail: "Try a broader or more historical framing — e.g. an era plus a subject like &lsquo;19th century mining disasters.&rsquo;" };
-  if (notice === "list-failed") return { tone: "error", eyebrow: "Couldn't build the list", title: "Something went wrong finding events.", detail: "Please try again in a moment." };
-  if (notice === "no-sources") return { tone: "error", eyebrow: "No sources found", title: "The archives didn't have enough on that event.", detail: "Pick a different event from the list — some have far more archival coverage than others." };
-  if (notice === "write-failed") return { tone: "error", eyebrow: "Couldn't finish", title: "Something went wrong while writing.", detail: "Please try again in a moment." };
-  if (notice === "topic-too-short") return { tone: "error", eyebrow: "Add a little more", title: "The theme needs a few more words.", detail: "Use at least 6 characters." };
-  if (notice === "missing-db") return { tone: "error", eyebrow: "Not configured", title: "The database isn't connected.", detail: "Set DATABASE_URL in the Vercel project and redeploy." };
-  return undefined;
 }
 
 function valueParam(value: string | string[] | undefined) {
