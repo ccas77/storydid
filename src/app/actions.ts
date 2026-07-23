@@ -12,6 +12,25 @@ import { generateStoryScriptUpdateForDossier } from "@/lib/research/story-genera
 import { runBriefToStory } from "@/lib/research/run";
 import { researchAndWrite } from "@/lib/write-article";
 import { listEvents } from "@/lib/list-events";
+import { AppError } from "@/lib/openai-call";
+
+// Record the real reason a step failed — to the server log AND the Activity feed — and
+// return the notice kind the UI should explain. No more silent generic failures.
+async function recordFailure(context: string, error: unknown, fallbackKind: string): Promise<string> {
+  const kind = error instanceof AppError ? error.kind : fallbackKind;
+  const detail = error instanceof Error ? error.message : String(error);
+  console.error(`[storydid] ${context} failed`, { kind, detail });
+  const db = getDb();
+  if (db) {
+    await db.insert(researchActivity).values({
+      kind: "error",
+      title: `${context} failed`,
+      detail,
+      metadata: { kind },
+    }).catch(() => undefined);
+  }
+  return kind;
+}
 
 export async function startCollectionAction(formData: FormData) {
   const theme = String(formData.get("theme") ?? "").replace(/\s+/g, " ").trim();
@@ -25,8 +44,8 @@ export async function startCollectionAction(formData: FormData) {
   try {
     events = await listEvents(theme, { count });
   } catch (error) {
-    console.error("[storydid] listing events failed", { theme, error });
-    redirect("/?notice=list-failed");
+    const kind = await recordFailure("Finding events", error, "list-failed");
+    redirect(`/?notice=${kind}`);
   }
   if (!events.length) redirect("/?notice=no-events");
 
@@ -54,8 +73,8 @@ export async function moreEventsAction(formData: FormData) {
   try {
     more = await listEvents(collection.theme, { count: 16, exclude: existingTitles });
   } catch (error) {
-    console.error("[storydid] finding more events failed", { collectionId, error });
-    redirect(`/c/${collectionId}?notice=list-failed`);
+    const kind = await recordFailure("Finding more events", error, "list-failed");
+    redirect(`/c/${collectionId}?notice=${kind}`);
   }
 
   const seen = new Set(existingTitles.map((title) => title.trim().toLowerCase()));
@@ -84,12 +103,12 @@ export async function writeEventArticleAction(formData: FormData) {
 
   let result: Awaited<ReturnType<typeof researchAndWrite>>;
   try {
-    result = await researchAndWrite(event.searchQuery || event.title);
+    // Search with both the focused query and the event's title for better source coverage.
+    result = await researchAndWrite(event.searchQuery || event.title, [event.title]);
   } catch (error) {
-    console.error("[storydid] event article generation crashed", { collectionId, index, error });
-    redirect(`/c/${collectionId}?notice=write-failed`);
+    const kind = await recordFailure(`Writing "${event.title}"`, error, "write-failed");
+    redirect(`/c/${collectionId}?notice=${kind}`);
   }
-  if (!result.ok) redirect(`/c/${collectionId}?notice=${result.reason === "no-sources" ? "no-sources" : "write-failed"}`);
 
   const [article] = await db.insert(articles).values({
     topic: event.title,
@@ -120,11 +139,9 @@ export async function writeArticleAction(formData: FormData) {
   try {
     result = await researchAndWrite(topic);
   } catch (error) {
-    console.error("[storydid] article generation crashed", { topic, error });
-    redirect("/?notice=write-failed");
+    const kind = await recordFailure(`Writing "${topic}"`, error, "write-failed");
+    redirect(`/?notice=${kind}`);
   }
-
-  if (!result.ok) redirect(`/?notice=${result.reason === "no-sources" ? "no-sources" : "write-failed"}`);
 
   const [article] = await db.insert(articles).values({
     topic,
